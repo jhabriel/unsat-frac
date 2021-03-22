@@ -34,3 +34,6 @@ bin/*
 *.msh
 *.geo
 *.geo_unrolled
+*.csv
+*.log
+*.txt
