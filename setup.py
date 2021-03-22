@@ -34,5 +34,5 @@ setup(
     python_requires=">=3.7, <4",
     install_requires=required,  # Optional
     extras_require={"dev": ["check-manifest"], "test": ["coverage"]},  # Optional
-    package_data={"unsat-frac": ["py.typed"]},  # Optional
+    package_data={"unsatfrac": ["py.typed"]},  # Optional
 )
