@@ -20,7 +20,7 @@ with open("requirements.txt") as f:
     required = f.read().splitlines()
 
 setup(
-    name="unsatfrac",  # Required
+    name="mdunsat",  # Required
     version="0.0.1",  # Required
     description="Unsaturated flow in fractured porous media",  # Optional
     long_description=long_description,  # Optional
@@ -31,8 +31,8 @@ setup(
     keywords="unsat-frac, porepy, fracture, porous media",  # Optional
     package_dir={"": "src"},  # Optional
     packages=find_packages(where="src"),  # Required
-    python_requires=">=3.7, <4",
+    python_requires=">=3.6, <4",
     install_requires=required,  # Optional
     extras_require={"dev": ["check-manifest"], "test": ["coverage"]},  # Optional
-    package_data={"unsatfrac": ["py.typed"]},  # Optional
+    package_data={"mdunsat": ["py.typed"]},  # Optional
 )
