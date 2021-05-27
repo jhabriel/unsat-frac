@@ -16,12 +16,11 @@ import porepy as pp
 import numpy as np
 import scipy.sparse.linalg as spla
 import scipy.sparse as sps
+import matplotlib.pyplot as plt
 from matplotlib.pyplot import spy as sparsity
 
 from porepy.numerics.ad.grid_operators import DirBC
 from mdunsat.ad_utils.ad_utils import (
-    PressureImbibitionThreshold,
-    RegularizedHeaviside,
     InterfaceUpwindAd,
     ArithmeticAverageAd,
     UpwindFluxBasedAd,
@@ -29,19 +28,26 @@ from mdunsat.ad_utils.ad_utils import (
 )
 
 
-def eval_ad_expression(ad_expression, gb, dof_manager, print_expression=True):
+def eval_ad_expression(ad_expression, gb, dof_manager, name=None, print_expression=True):
     expression_eval = pp.ad.Expression(ad_expression, dof_manager)
     expression_eval.discretize(gb)
     expression_num = expression_eval.to_ad(gb)
     if print_expression:   
         if isinstance(expression_num, pp.ad.Ad_array):
-            print(f'Array with values: \n {expression_num.val} \n')
-            print(f'Jacobian with values: \n {expression_num.jac.A} \n')
-        else:
-             print(f'Array with values: \n {expression_num} \n')
+            if name is None:
+                print('Evaluation of ad expression: \n')
+                print(f'Array with values: \n {expression_num.val} \n')
+                print(f'Jacobian with values: \n {expression_num.jac.A} \n')
+            else:
+                print(f'Evaluation of ad expression: {name} \n')
+                print(f'Array with values: \n {expression_num.val} \n')
+                print(f'Jacobian with values: \n {expression_num.jac.A} \n')
+                
+    return expression_num
+             
 #%% Make grid
 vert_frac = np.array([[50, 50], [0, 100]])
-nx = np.array([2, 2])
+nx = np.array([2, 1])
 L = np.array([100, 100])
 gb = pp.meshing.cart_grid([vert_frac], nx=nx, physdims=L)
 exporter = pp.Exporter(gb, "new_mexico", "out")
@@ -71,6 +77,14 @@ final_time = 3600 * 4
 num_time_steps = 100
 time = 0
 dt = final_time / num_time_steps
+
+#%% Printing parameters
+psi_b_l = []
+psi_b_r = []
+tr_psi_b_l = []
+tr_psi_b_r = []
+lambda_l = []
+lambda_r = []
 
 #%% Assign parameters
 param_key = "flow"
@@ -151,9 +165,9 @@ for g, d in gb:
     pp.set_state(d)
     pp.set_iterate(d)
     if g.dim == 2:
-        d[pp.STATE][pressure_var] = -1_000 * np.ones(g.num_cells)
+        d[pp.STATE][pressure_var] = -1000 * np.ones(g.num_cells)
     else:
-        d[pp.STATE][pressure_var] = -1_000 * np.ones(g.num_cells)
+        d[pp.STATE][pressure_var] = -100000 * np.ones(g.num_cells)
     d[pp.STATE][pp.ITERATE][pressure_var] = d[pp.STATE][pressure_var].copy()
 
 for e, d in gb.edges():
@@ -162,6 +176,15 @@ for e, d in gb.edges():
     pp.set_iterate(d)
     d[pp.STATE][mortar_var] = np.zeros(mg.num_cells)
     d[pp.STATE][pp.ITERATE][mortar_var] = d[pp.STATE][mortar_var].copy()
+    
+# Export to printing arrays
+psi_b_l.append(d_bulk[pp.STATE][pressure_var][0])
+psi_b_r.append(d_bulk[pp.STATE][pressure_var][0])
+tr_psi_b_l.append(d_bulk[pp.STATE][pressure_var][0])
+tr_psi_b_r.append(d_bulk[pp.STATE][pressure_var][0])
+lambda_l.append(d_edge[pp.STATE][mortar_var][1])
+lambda_r.append(d_edge[pp.STATE][mortar_var][0])
+
 
 #%% AD variables and manager
 grid_list = [g for g, _ in gb]
@@ -254,43 +277,81 @@ conserv_frac_eval.discretize(gb)
 
 #%% Declare equations for the interface
 mpfa_global = pp.ad.MpfaAd(param_key, grid_list)
-pressure_trace_from_high = (
-    mortar_proj.primary_to_mortar_avg * mpfa_global.bound_pressure_cell * psi
-    + mortar_proj.primary_to_mortar_avg * mpfa_global.bound_pressure_face * mortar_proj.mortar_to_primary_int * lmbda
-    )    
 robin = pp.ad.RobinCouplingAd(param_key, edge_list)
 
+# Projected bulk pressure traces onto the mortar space
+tr_psi_bulk = (
+    mortar_proj.primary_to_mortar_avg * mpfa_global.bound_pressure_cell * psi
+    + mortar_proj.primary_to_mortar_avg * mpfa_global.bound_pressure_face 
+      * mortar_proj.mortar_to_primary_int * lmbda
+    )
+
+tr_psi_bulk_m = (
+    mortar_proj.primary_to_mortar_avg * mpfa_global.bound_pressure_cell * psi_m
+    + mortar_proj.primary_to_mortar_avg * mpfa_global.bound_pressure_face 
+      * mortar_proj.mortar_to_primary_int * lmbda_m
+    )    
+
+# Projected fracture pressure onto the mortar space
+psi_frac = mortar_proj.secondary_to_mortar_avg * psi
+psi_frac_m = mortar_proj.secondary_to_mortar_avg * psi_m
+
+# Upwinding of relative permeability on the interfaces
+upwind_interface = InterfaceUpwindAd()
+krw_interface_ad = upwind_interface(
+    tr_psi_bulk_m, krw_ad(tr_psi_bulk_m), 
+    psi_frac_m, krw_ad(psi_frac_m)
+    )
+
+# Regularized Heaviside function
+psi_threshold = -80
+regularization_parameter = 1E-2
+
+def sealed_heaviside(psi_trace):
+    x = psi_trace - psi_threshold
+    return pp.ad.regularized_heaviside_2(x, eps=regularization_parameter)
+H_eps = pp.ad.Function(sealed_heaviside, name="Regularized Heaviside function")
+
+# Interface flux
+
+lambda_single_ph = robin.mortar_scaling * (tr_psi_bulk - psi_frac) + robin.mortar_discr * lmbda
+lambda_multi_ph = krw_interface_ad * lambda_single_phase
+interface_flux = H_eps(tr_psi_bulk) * interface_flux_krw
+
+eval_test = eval_ad_expression(
+    H_eps(tr_psi_bulk) * interface_flux_krw,
+    gb, dof_manager, name="test")
+
+assert False
+
+#interface_flux_1p = robin.mortar_scaling * (tr_psi_bulk - psi_frac) + robin.mortar_discr * lmbda
+#interface_flux_1p_eval = eval_ad_expression(interface_flux_1p, gb, dof_manager)
+
 interface_flux_eq = ( 
-    0 *  robin.mortar_scaling * (pressure_trace_from_high - mortar_proj.secondary_to_mortar_avg * psi)
+    H_eps(tr_psi_bulk) * 
+    robin.mortar_scaling * (tr_psi_bulk - psi_frac)
     + robin.mortar_discr * lmbda
     )
-interface_flux_eval = pp.ad.Expression(interface_flux_eq, dof_manager)
-interface_flux_eval.discretize(gb)
 
-#%% Experimenting Interface ad
-tr_psi_bulk_m =  (
-        mortar_proj.primary_to_mortar_avg * mpfa_global.bound_pressure_cell * psi_m
-        + mortar_proj.primary_to_mortar_avg * mpfa_global.bound_pressure_face 
-        * mortar_proj.mortar_to_primary_int * lmbda_m
-        )
-psi_frac_m = mortar_proj.secondary_to_mortar_avg * psi_m
-upwind_interface = InterfaceUpwindAd()
-krw_interface_ad = upwind_interface(tr_psi_bulk_m, krw_ad(tr_psi_bulk_m), psi_frac_m, krw_ad(psi_frac_m))
 
-pressure_threshold = -80
-regularization_param = 1e-3
-# #regularized_hs = 0.5 * (pp.ad.tanh(diff * regularization_param ** (-1)) + 1)
-#regularized_heaviside = RegularizedHeaviside(pressure_threshold, regularization_param)
-#reg_hs = regularized_heaviside(pressure_trace_from_high, pressure_threshold, regularization_param)
-#eval_ad_expression(reg_hs, gb, dof_manager, print_expression=True)
+# interface_flux_eq = ( 
+#     krw_interface_ad * robin.mortar_scaling * (tr_psi_bulk - psi_frac) * H_eps(tr_psi_bulk_m)
+#     + robin.mortar_discr * lmbda
+#     )
 
-def regularized_heaviside(pressure_trace):
-    return pp.ad.heaviside_smooth(pressure_trace - pressure_threshold)
+# interface_flux_eval = pp.ad.Expression(interface_flux_eq, dof_manager)
+# interface_flux_eval.discretize(gb)
 
-hs_smooth = pp.ad.Function(regularized_heaviside, "Regularized Heaviside AD")
-eval_ad_expression(hs_smooth(pressure_trace_from_high), gb, dof_manager)
-    
-    
+interface_flux_eval = eval_ad_expression(interface_flux_eq, gb, dof_manager, name="lambda")
+assert False
+
+
+expression_eval = pp.ad.Expression(interface_flux_eq, dof_manager)
+expression_eval.discretize(gb)
+expression_num = expression_eval.to_ad(gb)
+print("OK"); assert False
+
+
 
 #%% Assemble the system of equations
 eqs = [
@@ -351,10 +412,187 @@ for n in range(1, num_time_steps + 1):
     # Update next time step solution. Note that additive should be False here
     dof_manager.distribute_variable(solution, additive=False)
     
+    # Retrieve pressure trace
+    trace_psi = eval_ad_expression(tr_psi_bulk_m, gb, dof_manager, print_expression=False)
+    
+    # Export to printing arrays
+    psi_b_l.append(d_bulk[pp.STATE][pressure_var][0])
+    psi_b_r.append(d_bulk[pp.STATE][pressure_var][1])
+    tr_psi_b_l.append(trace_psi[1])
+    tr_psi_b_r.append(trace_psi[0])
+    lambda_l.append(d_edge[pp.STATE][mortar_var][1])
+    lambda_r.append(d_edge[pp.STATE][mortar_var][0])
+
     # Export to PARAVIEW
     if np.mod(n, 10) == 0:
         exporter.write_vtu([pressure_var, "S_eff"], time_step=n) 
         
         
-        
+#%% Pressure trace evolution
+fig, (ax1, ax2) = plt.subplots(1, 2)
+
+time_array = np.concatenate((np.array([0]), np.linspace(dt, final_time, num_time_steps)))
+
+# SUBPLOT 1 -> Left pressure head
+
+# Plot left boundary pressure -> -75 [cm]
+ax1.plot(
+    [time_array[0], time_array[-1]], 
+    [-75, -75], 
+    color="red", 
+    linewidth=2, 
+    linestyle="-", 
+    label=r"$\Psi_{bc}$"
+    )
+
+# Plot minimum entry pressure -> -80 [cm]
+ax1.plot(
+    [time_array[0], time_array[-1]], 
+    [pressure_threshold, pressure_threshold], 
+    color="green", 
+    linewidth=2, 
+    linestyle="-", 
+    label=r"$\Psi_{L}$"
+    )
+
+# Plot left pressure trace
+ax1.plot(
+    time_array, 
+    tr_psi_b_l, 
+    color='orange', 
+    linewidth=2,
+    label=r"$\mathrm{tr} \,\, \Psi_{left}^m$"
+    )
+
+# Set axes limits
+ax1.set_ylim([-150, -70])
+
+# Set labels
+ax1.set_xlabel('Time [s]')
+ax1.set_ylabel(r'Pressure head [cm]')
+
+# Set legend
+ax1.legend(
+    loc="lower right", 
+    fontsize="small", 
+    numpoints=1, 
+    frameon=True, 
+    handlelength=0.5
+    )
+
+
+# SUBPLOT 2 -> Right pressure head
+
+# Plot left boundary pressure -> -75 [cm]
+ax2.plot(
+    [time_array[0], time_array[-1]], 
+    [-75, -75], 
+    color="red", 
+    linewidth=2, 
+    linestyle="-", 
+    label=r"$\Psi_{bc}$"
+    )
+
+# Plot minimum entry pressure -> -80 [cm]
+ax2.plot(
+    [time_array[0], time_array[-1]], 
+    [pressure_threshold, pressure_threshold], 
+    color="green", 
+    linewidth=2, 
+    linestyle="-", 
+    label=r"$\Psi_{L}$"
+    )
+
+# Plot left pressure trace
+ax2.plot(
+    time_array, 
+    tr_psi_b_r, 
+    color='orange', 
+    linewidth=2,
+    label=r"$\mathrm{tr} \,\, \Psi_{right}^m$"
+    )
+
+# Set axes limits
+ax2.set_ylim([-1010, -65])
+
+# Set labels
+ax1.set_xlabel('Time [s]')
+ax1.set_ylabel(r'Pressure head [cm]')
+
+# Set legend
+ax2.legend(
+    loc="center", 
+    fontsize="small", 
+    numpoints=1, 
+    frameon=True, 
+    handlelength=0.5
+    )
+
+fig.tight_layout()
+fig.savefig("pressureTraceEvolution.pdf", transparent=True)
+
+
+#%% Mortar fluxes evolution
+fig, (ax1, ax2) = plt.subplots(1, 2)
+
+time_array = np.concatenate((np.array([0]), np.linspace(dt, final_time, num_time_steps)))
+
+# SUBPLOT 1 -> Left pressure head
+
+# Plot left pressure trace
+ax1.plot(
+    time_array, 
+    lambda_l, 
+    color='orange', 
+    linewidth=2,
+    label=r"$\lambda_{left}$"
+    )
+
+# Set axes limits
+#ax1.set_ylim([-150, -70])
+
+# Set labels
+ax1.set_xlabel('Time [s]')
+ax1.set_ylabel(r'Mortar flux')
+
+# Set legend
+ax1.legend(
+    loc="lower right", 
+    fontsize="small", 
+    numpoints=1, 
+    frameon=True, 
+    handlelength=0.5
+    )
+
+
+# SUBPLOT 2 -> Right pressure head
+
+# Plot left pressure trace
+ax2.plot(
+    time_array, 
+    lambda_r, 
+    color='orange', 
+    linewidth=2,
+    label=r"$\lambda_{right}$"
+    )
+
+# Set axes limits
+#ax2.set_ylim([-1010, -65])
+
+# Set labels
+ax1.set_xlabel('Time [s]')
+#ax1.set_ylabel(r'Pressure head [cm]')
+
+# Set legend
+ax2.legend(
+    loc="center", 
+    fontsize="small", 
+    numpoints=1, 
+    frameon=True, 
+    handlelength=0.5
+    )
+
+fig.tight_layout()
+fig.savefig("pressureAndMortarEvolution.pdf", transparent=True)
+
         
