@@ -9,95 +9,10 @@ import numpy as np
 import scipy.sparse as sps
 
 from porepy.numerics.ad.operators import ApplicableOperator
-from porepy.numerics.ad.functions import heaviside, tanh
+from porepy.numerics.ad.functions import heaviside
 from porepy.numerics.ad.forward_mode import Ad_array
 from typing import Callable
 
-
-
-
-#%% INTERFACE IMBIBITION THRESHOLDING PARAMETER
-
-class RegularizedHeaviside(ApplicableOperator):
-    
-    def __init__(self, pressure_threshold, regularization_param):
-        
-        self._set_tree()
-        self._pressure_threshold = pressure_threshold
-        self._regularization_param = regularization_param
-        
-    def __repr__(self) -> str:
-        return "Regularized Heaviside AD operator"
-
-    def apply(self, pressure_trace):
-        print()
-        if isinstance(pressure_trace, pp.ad.Ad_array):
-            diff = self._pressure_threshold - pressure_trace
-            reg_hs = 0.5 * (pp.ad.tanh(diff) * self._regularization_param ** (-1.0) + 1.0)
-            return reg_hs
-
-class PressureImbibitionThreshold:
-    
-    # TODO: Allow for different pressure thresholds on each interface
-    def __init__(self, pressure_threshold, regularization_param = 1E-03):
-        self.pressure_threshold = pressure_threshold
-        self.regularization_param = regularization_param
-        
-    def __repr__(self):
-        return "Pressure imbibition threshold function"
-        
-    def sharp_imbibition(self, pressure_trace):
-        if isinstance(pressure_trace, pp.ad.Array):
-            raise TypeError("Pressure trace cannot be of the type Ad array")
-        else:
-            hs = heaviside(self.pressure_threshold - pressure_trace)
-            pit = hs * self.pressure_threshold
-            nn = len(pit)
-        return sps.spdiags(pit, 0, nn, nn) 
-    
-    def smooth_imbibition(self, pressure_trace):
-        print("Here")
-        if isinstance(pressure_trace, pp.ad.Operator):
-            diff = self.pressure_threshold - pressure_trace
-            reg_hs = 0.5 * (pp.ad.tanh(diff * self.regularization_param**(-1)) + 1)
-            return reg_hs
-        else:
-            diff = self.pressure_threshold - pressure_trace
-            reg_hs = 0.5 * (np.tanh(diff * self.regularization_param**(-1)) + 1)
-            nn = len(pressure_trace)
-            reg_hs_matrix = sps.diags(reg_hs, 0, nn, nn)
-            return reg_hs_matrix
-
-class InterfaceImbibitionThreshold(ApplicableOperator):
-    """
-    Computes a boolean array to determine whether a portion of the interface
-    allows flux (1) or behaves like a barrier (0) based on a user-defined threshold.
-    """
-    
-    def __init__(self):
-        self._set_tree()
-        
-    def __repr__(self):
-        return "Interface imbibition threshold AD operator"
-    
-    def apply(self, trace_p_bulk: np.ndarray,  pressure_threshold: float):
-        """
-        Apply method for obtaining boolean imbibition threshold array
-
-        Parameters
-        ----------
-        trace_p_bulk : np.ndarray
-            DESCRIPTION.
-        pressure_threshold : float
-            DESCRIPTION.
-
-        Returns
-        -------
-        None.
-
-        """
-
-        return None
 
 #%% INTERFACE UPSTREAM WEIGHTING
 class InterfaceUpwindAd(ApplicableOperator):
