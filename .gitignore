@@ -37,3 +37,4 @@ bin/*
 *.csv
 *.log
 *.idea/*
+*.ipe
