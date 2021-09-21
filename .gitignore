@@ -38,3 +38,5 @@ bin/*
 *.log
 *.idea/*
 *.ipe
+*.mp4
+*.avi
