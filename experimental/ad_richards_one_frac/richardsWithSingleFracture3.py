@@ -19,6 +19,13 @@ import scipy.sparse as sps
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import spy as sparsity
 
+plt.rcParams.update({
+    "text.usetex": True,
+    "font.family": "DejaVu Sans",
+    "font.serif": "Computer Modern Roman",
+    "font.sans-serif": "Computer Modern Sans Serif",
+    "font.cursive": "Zapf Chancery"})
+
 from porepy.numerics.ad.grid_operators import DirBC
 from mdunsat.ad_utils.ad_utils import (
     InterfaceUpwindAd,
@@ -164,7 +171,7 @@ for g, d in gb:
     if g.dim == 2:
         d[pp.STATE][pressure_var] = -1000 * np.ones(g.num_cells)
     else:
-        d[pp.STATE][pressure_var] = -1000 * np.ones(g.num_cells)
+        d[pp.STATE][pressure_var] = -100000 * np.ones(g.num_cells)
     d[pp.STATE][pp.ITERATE][pressure_var] = d[pp.STATE][pressure_var].copy()
 
 for e, d in gb.edges():
@@ -242,8 +249,8 @@ flux_bulk = (
         + krw_faces_ad * mpfa_bulk.bound_flux * bulk_face_proj * mortar_proj.mortar_to_primary_int * lmbda
 )
 
-linearization = "newton"
-#linearization = "modified_picard"
+#linearization = "newton"
+linearization = "modified_picard"
 #linearization = "l_scheme"
 
 # Treatment of source and accumulation terms
@@ -284,7 +291,7 @@ conserv_bulk_num = conserv_bulk_eval.to_ad(gb)
 # %% Declare equations for the fracture
 conserv_frac_eq = (
         frac_cell_proj * (psi - psi_n)
-        + dt * frac_cell_proj * mortar_proj.mortar_to_secondary_int * lmbda
+        + dt * np.sum(frac_cell_proj * mortar_proj.mortar_to_secondary_int * lmbda)
 )
 conserv_frac_eval = pp.ad.Expression(conserv_frac_eq, dof_manager)
 conserv_frac_eval.discretize(gb)
@@ -320,7 +327,7 @@ krw_interface_ad = upwind_interface(
 
 # Regularized Heaviside function
 psi_threshold = -80
-regularization_parameter = 0.04
+regularization_parameter = 0.1
 
 
 def sealed_heaviside(psi_trace):
@@ -416,7 +423,7 @@ for n in range(1, num_time_steps + 1):
     if np.mod(n, 10) == 0:
         exporter.write_vtu([pressure_var, "S_eff"], time_step=n)
 
-    # %% Pressure trace evolution
+# %% Pressure trace evolution
 fig, (ax1, ax2) = plt.subplots(1, 2)
 
 time_array = np.concatenate((np.array([0]), np.linspace(dt, final_time, num_time_steps)))
@@ -430,7 +437,8 @@ ax1.plot(
     color="red",
     linewidth=2,
     linestyle="-",
-    label=r"$\Psi_{bc}$"
+    marker=".",
+    label=r"$\psi_{bc} = -75\;\mathrm{[cm]}$"
 )
 
 # Plot minimum entry pressure -> -80 [cm]
@@ -440,7 +448,7 @@ ax1.plot(
     color="green",
     linewidth=2,
     linestyle="-",
-    label=r"$\Psi_{L}$"
+    label=r"$\psi_{L} = -80\;\mathrm{[cm]}$"
 )
 
 # Plot left pressure trace
@@ -449,11 +457,13 @@ ax1.plot(
     tr_psi_b_l,
     color='orange',
     linewidth=2,
-    label=r"$\mathrm{tr} \,\, \Psi_{left}^m$"
+    linestyle="-",
+    marker=".",
+    label=r"$\mathrm{tr} \; \psi_{\mathrm{left}}$"
 )
 
 # Set axes limits
-ax1.set_ylim([-150, -70])
+ax1.set_ylim([-1000, -70])
 
 # Set labels
 ax1.set_xlabel('Time [s]')
@@ -476,7 +486,8 @@ ax2.plot(
     [-75, -75],
     color="red",
     linewidth=2,
-    linestyle="-",
+    linestyle="None",
+    marker=".",
     label=r"$\Psi_{bc}$"
 )
 

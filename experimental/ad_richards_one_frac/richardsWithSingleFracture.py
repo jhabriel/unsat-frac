@@ -197,7 +197,7 @@ elif avg_method == "upwind":
     flux1p_bulk = (
     mpfa_bulk.flux * bulk_cell_proj * psi_m
     + mpfa_bulk.bound_flux * bound_bulk
-    #+ mpfa_bulk.bound_flux * bulk_face_proj * mortar_proj.mortar_to_primary_int * lmbda_m
+    #+ mpfa_bulk.bound_flux * bulk_face_rest * mortar_proj.mortar_to_primary_int * lmbda_m
     )
     krw_faces_ad = upwind(krw_ad(bulk_cell_proj * psi_m), krw_ad(dirbc_bulk), flux1p_bulk)
 else:
@@ -207,7 +207,7 @@ else:
 flux_bulk = (
     krw_faces_ad * mpfa_bulk.flux * bulk_cell_proj * psi
     + krw_faces_ad * mpfa_bulk.bound_flux * bound_bulk
-    #+ krw_faces_ad * mpfa_bulk.bound_flux * bulk_face_proj * mortar_proj.mortar_to_primary_int * lmbda
+    #+ krw_faces_ad * mpfa_bulk.bound_flux * bulk_face_rest * mortar_proj.mortar_to_primary_int * lmbda
     )
 
 # Source and accumulation terms (Linearization: Modified Picard iteration)
@@ -233,8 +233,8 @@ print(f'>> Conservation bulk: \n {conserv_bulk_num.jac.A} \n')
 
 # #%% Declare equations for the fracture
 # conserv_frac_eq = (
-#     0 * frac_cell_proj * (psi - psi_n) 
-#     + dt * frac_cell_proj * mortar_proj.mortar_to_secondary_int * lmbda
+#     0 * frac_cell_rest * (psi - psi_n)
+#     + dt * frac_cell_rest * mortar_proj.mortar_to_secondary_int * lmbda
 #     )
 # conserv_frac_eval = pp.ad.Expression(conserv_frac_eq, dof_manager)
 # conserv_frac_eval.discretize(gb)
