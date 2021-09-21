@@ -36,4 +36,4 @@ bin/*
 *.geo_unrolled
 *.csv
 *.log
-*.idea/  # ignore pycharm-related files
+*.idea/*
