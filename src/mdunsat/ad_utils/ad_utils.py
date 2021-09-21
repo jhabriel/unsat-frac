@@ -262,7 +262,7 @@ class vanGenuchten:
         self.m_vG = params["m_vG"]
         
     def __repr__(self):
-        print("Soil Water Retention Curve: van Genuchtem-Mualem model")
+        return "Soil Water Retention Curve: van Genuchtem-Mualem model"
         
     def is_unsat(self, p):
         """ Determine whether the cell is saturated or not """
@@ -290,8 +290,7 @@ class vanGenuchten:
             is_sat = 1 - is_unsat        
             num = self.theta_s - self.theta_r
             den = (1 + (self.alpha_vG * np.abs(p)) ** self.n_vG) ** self.m_vG
-            theta = ((num * den ** (-1) + self.theta_r) * is_unsat 
-                     + self.theta_s * is_sat)
+            theta = (num / den + self.theta_r) * is_unsat + self.theta_s * is_sat
         
         return theta
     
