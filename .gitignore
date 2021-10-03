@@ -21,8 +21,6 @@
 *.coverage
 .cache/*
 bin/*
-*.pvd
-*.so
 *.png
 *.ipynb_checkpoints*
 *.eps
@@ -34,7 +32,7 @@ bin/*
 *.msh
 *.geo
 *.geo_unrolled
-*.csv
+#*.csv
 *.log
 *.idea/*
 *.ipe
