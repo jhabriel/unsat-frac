@@ -81,7 +81,7 @@ class ArithmeticAverageAd(ApplicableOperator):
                 inner_values[int_fcs_neigh[:, 0]] + inner_values[int_fcs_neigh[:, 1]]
             )
 
-        return sps.spdiags(face_avg, 0, g.num_faces, g.num_faces) 
+        return sps.spdiags(face_avg, 0, g.num_faces, g.num_faces)
 
 
 class FluxBasedUpwindAd(ApplicableOperator):
@@ -345,7 +345,9 @@ for n in range(1, num_time_steps + 1):
 
         avg_method = "arithmetic"
         if avg_method == "arithmetic":
-            rho_faces_ad = arithmetic_avg(rho_ad(p.previous_iteration()), rho_ad(dir_bound_ad))
+            rho_faces_ad = arithmetic_avg(
+                rho_ad(p.previous_iteration()), rho_ad(dir_bound_ad)
+            )
         elif avg_method == "upwind":
             rho_faces_ad = upwind(
                 rho_ad(p.previous_iteration()), rho_ad(dir_bound_ad), flux_ad
@@ -353,7 +355,7 @@ for n in range(1, num_time_steps + 1):
         else:
             raise ValueError("Averaging method not implemented")
 
-        advective_flux_ad = rho_faces_ad * flux_ad   # advective flux
+        advective_flux_ad = rho_faces_ad * flux_ad  # advective flux
         # The following expression results in an error
         # advective_flux_ad =  rho_faces_ad * flux_ad
         # This suggests that there is a preferrable place where the operations must be added to

@@ -40,7 +40,7 @@ def l2_error(g, num_array, true_array, array_sol):
         ).sum() ** 0.5
     else:
         raise ValueError("Solution array not recognized. Use pressure or flux")
-    
+
     return error
 
 
@@ -48,23 +48,24 @@ def make_grid(mesh_size, grid_type):
     """Creates grid bucket given the element size and mesh type"""
 
     if grid_type == "cartesian":
-        n = int(1/mesh_size)
+        n = int(1 / mesh_size)
         gb = pp.meshing.cart_grid([], nx=[n, n], physdims=[1.0, 1.0])
     elif grid_type == "triangular":
         domain = {"xmin": 0.0, "xmax": 1.0, "ymin": 0.0, "ymax": 1.0}
         network_2d = pp.FractureNetwork2d(None, None, domain)
         mesh_args = {"mesh_size_bound": mesh_size, "mesh_size_frac": mesh_size}
-        gb = network_2d.mesh(mesh_args) 
+        gb = network_2d.mesh(mesh_args)
     else:
         raise ValueError("Solution array not recognized. Use pressure or flux")
-    
+
     return gb
 
-#%% Establish model parameters and create grid
-solution = "parabolic" # trigonometric
-avg_method = "upwind" # arithmetic 
 
-grid_type = "cartesian" # triangular
+#%% Establish model parameters and create grid
+solution = "parabolic"  # trigonometric
+avg_method = "upwind"  # arithmetic
+
+grid_type = "cartesian"  # triangular
 mesh_size = 0.25
 gb = make_grid(mesh_size, grid_type)
 g = gb.grids_of_dimension(2)[0]
@@ -134,6 +135,7 @@ param_key = "flow"
 pressure_var = "pressure_head"
 d[pp.PRIMARY_VARIABLES] = {pressure_var: {"cells": 1}}
 
+
 def initialize_parameters(g, d, param_key, time):
 
     nf = g.num_faces
@@ -149,7 +151,7 @@ def initialize_parameters(g, d, param_key, time):
     bottom = np.where(np.abs(fc[1]) < 1e-5)[0]
     left = np.where(np.abs(fc[0]) < 1e-5)[0]
     right = np.where(np.abs(fc[0] - 1) < 1e-5)[0]
-    
+
     bc_faces = g.get_boundary_faces()
     bc_type = np.array(bc_faces.size * [None])
     bc_type[np.in1d(bc_faces, top)] = "neu"
@@ -157,17 +159,17 @@ def initialize_parameters(g, d, param_key, time):
     bc_type[np.in1d(bc_faces, left)] = "dir"
     bc_type[np.in1d(bc_faces, right)] = "dir"
     bc = pp.BoundaryCondition(g, faces=bc_faces, cond=bc_type)
-                    
+
     bc_values = np.zeros(g.num_faces)
     pf = p_ex(fc[0], fc[1], time * np.ones(nf))
     qf = q_ex(fc[0], fc[1], time * np.ones(nf))
     Qf = qf[0] * fn[0] + qf[1] * fn[1]
-    
-    bc_values[top] = np.abs(Qf[top]) # outflow flux 
-    bc_values[bottom] = np.abs(Qf[bottom]) # outflow flux
+
+    bc_values[top] = np.abs(Qf[top])  # outflow flux
+    bc_values[bottom] = np.abs(Qf[bottom])  # outflow flux
     bc_values[left] = pf[left]
     bc_values[right] = pf[right]
-    
+
     source_term = f_ex(cc[0], cc[1], time * np.ones(nc)) * V
 
     specified_parameters = {
@@ -182,40 +184,40 @@ def initialize_parameters(g, d, param_key, time):
         "n_vG": n_vG,
         "m_vG": m_vG,
     }
-    
+
     pp.initialize_data(g, d, param_key, specified_parameters)
-    
+
 
 def update_parameters(g, d, param_key, time):
-    
+
     nf = g.num_faces
     nc = g.num_cells
     fn = g.face_normals
     fc = g.face_centers
     V = g.cell_volumes
-    
+
     top = np.where(np.abs(fc[1] - 1) < 1e-5)[0]
     bottom = np.where(np.abs(fc[1]) < 1e-5)[0]
     left = np.where(np.abs(fc[0]) < 1e-5)[0]
     right = np.where(np.abs(fc[0] - 1) < 1e-5)[0]
-        
+
     bc_values = np.zeros(g.num_faces)
     pf = p_ex(fc[0], fc[1], time * np.ones(nf))
     qf = q_ex(fc[0], fc[1], time * np.ones(nf))
     Qf = qf[0] * fn[0] + qf[1] * fn[1]
-    
-    bc_values[top] = np.abs(Qf[top]) # outflow flux 
-    bc_values[bottom] = np.abs(Qf[bottom]) # outflow flux
+
+    bc_values[top] = np.abs(Qf[top])  # outflow flux
+    bc_values[bottom] = np.abs(Qf[bottom])  # outflow flux
     bc_values[left] = pf[left]
     bc_values[right] = pf[right]
-    
+
     cc = g.cell_centers
     source_term = f_ex(cc[0], cc[1], time * np.ones(nc)) * V
-    
+
     d[pp.PARAMETERS][param_key]["bc_values"] = bc_values
     d[pp.PARAMETERS][param_key]["source"] = source_term
-    
-    
+
+
 #%% Set initial states
 for g, d in gb:
     cc = g.cell_centers
@@ -229,8 +231,8 @@ grid_list = [g for g, _ in gb]
 dof_manager = pp.DofManager(gb)
 equation_manager = pp.ad.EquationManager(gb, dof_manager)
 psi = equation_manager.merge_variables([(g, pressure_var) for g in grid_list])
-#psi_m = psi.previous_iteration()
-#psi_n = psi.previous_timestep()
+# psi_m = psi.previous_iteration()
+# psi_n = psi.previous_timestep()
 
 #%% AD operators and discrete expressions
 initialize_parameters(g, d, param_key, time)
@@ -254,10 +256,14 @@ flux_1p_ad = mpfa_ad.flux * psi.previous_iteration() + mpfa_ad.bound_flux * boun
 # Face-averaging of relative permeabilities
 if avg_method == "arithmetic":
     arithmetic_avg = ArithmeticAverageAd(g, d, param_key)
-    krw_faces_ad = arithmetic_avg(krw_ad(psi.previous_iteration()), krw_ad(dir_bound_ad))
+    krw_faces_ad = arithmetic_avg(
+        krw_ad(psi.previous_iteration()), krw_ad(dir_bound_ad)
+    )
 elif avg_method == "upwind":
     upwind = UpwindFluxBasedAd(g, d, param_key)
-    krw_faces_ad = upwind(krw_ad(psi.previous_iteration()), krw_ad(dir_bound_ad), flux_1p_ad)
+    krw_faces_ad = upwind(
+        krw_ad(psi.previous_iteration()), krw_ad(dir_bound_ad), flux_1p_ad
+    )
 else:
     raise ValueError("Averaging method not implemented")
 
@@ -324,11 +330,11 @@ for n in range(1, num_time_steps + 1):
             "rel res",
             residual_norm / initial_residual_norm,
         )
-   
+
         # Prepare next iteration
         iteration_counter += 1
         total_iteration_counter += 1
-        
+
     print()
 
     # Update next time step solution
@@ -356,6 +362,6 @@ true_flux = (
     + yn * q_ex(xf, yf, time * np.ones(g.num_faces))[1]
 )
 q_error = l2_error(g, num_flux.val, true_flux, "flux")
-    
-#return p_error, q_error    
+
+# return p_error, q_error
 print("Pressure error:", p_error, "\t | \t", "Flux error:", q_error)

@@ -35,7 +35,7 @@ bc_type[np.in1d(bc_faces, bottom)] = "neu"
 bc_type[np.in1d(bc_faces, left)] = "dir"
 bc_type[np.in1d(bc_faces, right)] = "dir"
 bc = pp.BoundaryCondition(g, faces=bc_faces, cond=bc_type)
-            
+
 bc_values = np.zeros(g.num_faces)
 bc_values[left] = np.array([5, 40])
 bc_values[right] = np.array([5, 50])
@@ -43,10 +43,10 @@ bc_values[top] = np.array([-1, +1])
 bc_values[bottom] = np.array([+1, -1])
 specified_parameters = {
     "second_order_tensor": perm,
-    "bc": bc, 
+    "bc": bc,
     "bc_values": bc_values,
-    }
-    
+}
+
 # Initialize data
 pp.initialize_default_data(g, d, keyword, specified_parameters)
 

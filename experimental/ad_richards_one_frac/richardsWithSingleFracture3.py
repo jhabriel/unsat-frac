@@ -19,12 +19,15 @@ import scipy.sparse as sps
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import spy as sparsity
 
-plt.rcParams.update({
-    "text.usetex": True,
-    "font.family": "DejaVu Sans",
-    "font.serif": "Computer Modern Roman",
-    "font.sans-serif": "Computer Modern Sans Serif",
-    "font.cursive": "Zapf Chancery"})
+plt.rcParams.update(
+    {
+        "text.usetex": True,
+        "font.family": "DejaVu Sans",
+        "font.serif": "Computer Modern Roman",
+        "font.sans-serif": "Computer Modern Sans Serif",
+        "font.cursive": "Zapf Chancery",
+    }
+)
 
 from porepy.numerics.ad.grid_operators import DirBC
 from mdunsat.ad_utils.ad_utils import (
@@ -35,20 +38,22 @@ from mdunsat.ad_utils.ad_utils import (
 )
 
 
-def eval_ad_expression(ad_expression, gb, dof_manager, name=None, print_expression=True):
+def eval_ad_expression(
+    ad_expression, gb, dof_manager, name=None, print_expression=True
+):
     expression_eval = pp.ad.Expression(ad_expression, dof_manager)
     expression_eval.discretize(gb)
     expression_num = expression_eval.to_ad(gb)
     if print_expression:
         if isinstance(expression_num, pp.ad.Ad_array):
             if name is None:
-                print('Evaluation of ad expression: \n')
-                print(f'Array with values: \n {expression_num.val} \n')
-                print(f'Jacobian with values: \n {expression_num.jac.A} \n')
+                print("Evaluation of ad expression: \n")
+                print(f"Array with values: \n {expression_num.val} \n")
+                print(f"Jacobian with values: \n {expression_num.jac.A} \n")
             else:
-                print(f'Evaluation of ad expression: {name} \n')
-                print(f'Array with values: \n {expression_num.val} \n')
-                print(f'Jacobian with values: \n {expression_num.jac.A} \n')
+                print(f"Evaluation of ad expression: {name} \n")
+                print(f"Array with values: \n {expression_num.val} \n")
+                print(f"Jacobian with values: \n {expression_num.jac.A} \n")
 
     return expression_num
 
@@ -152,9 +157,11 @@ def assign_data(param_key, time):
             # No-flow Neumann conditions
             bc = pp.BoundaryCondition(g)
             bc_val = np.zeros(g.num_faces)
-            specified_data = {'second_order_tensor': perm,
-                              'bc': bc,
-                              'bc_values': bc_val}
+            specified_data = {
+                "second_order_tensor": perm,
+                "bc": bc,
+                "bc_values": bc_val,
+            }
             d = pp.initialize_data(g, d, param_key, specified_data)
 
     # Assign interface parameters
@@ -234,24 +241,33 @@ if avg_method == "arithmetic":
 elif avg_method == "upwind":
     upwind = UpwindFluxBasedAd(g_bulk, d_bulk, param_key)
     flux1p_bulk = (
-            mpfa_bulk.flux * bulk_cell_proj * psi_m
-            + mpfa_bulk.bound_flux * bound_bulk
-            + mpfa_bulk.bound_flux * bulk_face_proj * mortar_proj.mortar_to_primary_int * lmbda_m
+        mpfa_bulk.flux * bulk_cell_proj * psi_m
+        + mpfa_bulk.bound_flux * bound_bulk
+        + mpfa_bulk.bound_flux
+        * bulk_face_proj
+        * mortar_proj.mortar_to_primary_int
+        * lmbda_m
     )
-    krw_faces_ad = upwind(krw_ad(bulk_cell_proj * psi_m), krw_ad(dirbc_bulk), flux1p_bulk)
+    krw_faces_ad = upwind(
+        krw_ad(bulk_cell_proj * psi_m), krw_ad(dirbc_bulk), flux1p_bulk
+    )
 else:
     raise NotImplementedError("Averaging method not implemented")
 
 # Darcy fluxes
 flux_bulk = (
-        krw_faces_ad * mpfa_bulk.flux * bulk_cell_proj * psi
-        + krw_faces_ad * mpfa_bulk.bound_flux * bound_bulk
-        + krw_faces_ad * mpfa_bulk.bound_flux * bulk_face_proj * mortar_proj.mortar_to_primary_int * lmbda
+    krw_faces_ad * mpfa_bulk.flux * bulk_cell_proj * psi
+    + krw_faces_ad * mpfa_bulk.bound_flux * bound_bulk
+    + krw_faces_ad
+    * mpfa_bulk.bound_flux
+    * bulk_face_proj
+    * mortar_proj.mortar_to_primary_int
+    * lmbda
 )
 
-#linearization = "newton"
+# linearization = "newton"
 linearization = "modified_picard"
-#linearization = "l_scheme"
+# linearization = "l_scheme"
 
 # Treatment of source and accumulation terms
 # NOTE: The expression containing the active ad variable (psi) must be placed at the left of the (final) expression.
@@ -262,19 +278,21 @@ if linearization == "newton":
     accum_bulk_active = mass_bulk.mass * theta_ad(bulk_cell_proj * psi)
     accum_bulk_inactive = mass_bulk.mass * theta_ad(bulk_cell_proj * psi_n) * (-1)
 elif linearization == "modified_picard":
-    accum_bulk_active = mass_bulk.mass * bulk_cell_proj * psi * C_ad(bulk_cell_proj * psi_m)
+    accum_bulk_active = (
+        mass_bulk.mass * bulk_cell_proj * psi * C_ad(bulk_cell_proj * psi_m)
+    )
     accum_bulk_inactive = mass_bulk.mass * (
-            theta_ad(bulk_cell_proj * psi_m)
-            - C_ad(bulk_cell_proj * psi_m) * (bulk_cell_proj * psi_m)
-            - theta_ad(bulk_cell_proj * psi_n)
+        theta_ad(bulk_cell_proj * psi_m)
+        - C_ad(bulk_cell_proj * psi_m) * (bulk_cell_proj * psi_m)
+        - theta_ad(bulk_cell_proj * psi_n)
     )
 elif linearization == "l_scheme":
     L = 0.0025
     accum_bulk_active = L * mass_bulk.mass * bulk_cell_proj * psi
     accum_bulk_inactive = mass_bulk.mass * (
-            theta_ad(bulk_cell_proj * psi_m)
-            - L * (bulk_cell_proj * psi_m)
-            - theta_ad(bulk_cell_proj * psi_n)
+        theta_ad(bulk_cell_proj * psi_m)
+        - L * (bulk_cell_proj * psi_m)
+        - theta_ad(bulk_cell_proj * psi_n)
     )
 else:
     raise NotImplementedError("Linearization scheme not implemented")
@@ -286,12 +304,11 @@ conserv_bulk_eq = accumulation_bulk + dt * div_bulk * flux_bulk - dt * source_bu
 conserv_bulk_eval = pp.ad.Expression(conserv_bulk_eq, dof_manager)
 conserv_bulk_eval.discretize(gb)
 conserv_bulk_num = conserv_bulk_eval.to_ad(gb)
-#print(f'>> Conservation bulk: \n {conserv_bulk_num.jac.A} \n')
+# print(f'>> Conservation bulk: \n {conserv_bulk_num.jac.A} \n')
 
 # %% Declare equations for the fracture
-conserv_frac_eq = (
-        frac_cell_proj * (psi - psi_n)
-        + dt * np.sum(frac_cell_proj * mortar_proj.mortar_to_secondary_int * lmbda)
+conserv_frac_eq = frac_cell_proj * (psi - psi_n) + dt * np.sum(
+    frac_cell_proj * mortar_proj.mortar_to_secondary_int * lmbda
 )
 conserv_frac_eval = pp.ad.Expression(conserv_frac_eq, dof_manager)
 conserv_frac_eval.discretize(gb)
@@ -303,15 +320,19 @@ robin = pp.ad.RobinCouplingAd(param_key, edge_list)
 
 # Projected bulk pressure traces onto the mortar space
 tr_psi_bulk = (
-        mortar_proj.primary_to_mortar_avg * mpfa_global.bound_pressure_cell * psi
-        + mortar_proj.primary_to_mortar_avg * mpfa_global.bound_pressure_face
-        * mortar_proj.mortar_to_primary_int * lmbda
+    mortar_proj.primary_to_mortar_avg * mpfa_global.bound_pressure_cell * psi
+    + mortar_proj.primary_to_mortar_avg
+    * mpfa_global.bound_pressure_face
+    * mortar_proj.mortar_to_primary_int
+    * lmbda
 )
 
 tr_psi_bulk_m = (
-        mortar_proj.primary_to_mortar_avg * mpfa_global.bound_pressure_cell * psi_m
-        + mortar_proj.primary_to_mortar_avg * mpfa_global.bound_pressure_face
-        * mortar_proj.mortar_to_primary_int * lmbda_m
+    mortar_proj.primary_to_mortar_avg * mpfa_global.bound_pressure_cell * psi_m
+    + mortar_proj.primary_to_mortar_avg
+    * mpfa_global.bound_pressure_face
+    * mortar_proj.mortar_to_primary_int
+    * lmbda_m
 )
 
 # Projected fracture pressure onto the mortar space
@@ -321,8 +342,7 @@ psi_frac_m = mortar_proj.secondary_to_mortar_avg * psi_m
 # Upwinding of relative permeability on the interfaces
 upwind_interface = InterfaceUpwindAd()
 krw_interface_ad = upwind_interface(
-    tr_psi_bulk_m, krw_ad(tr_psi_bulk_m),
-    psi_frac_m, krw_ad(psi_frac_m)
+    tr_psi_bulk_m, krw_ad(tr_psi_bulk_m), psi_frac_m, krw_ad(psi_frac_m)
 )
 
 # Regularized Heaviside function
@@ -353,7 +373,7 @@ interface_flux_num = interface_flux_eval.to_ad(gb)
 eqs = [
     pp.ad.Expression(conserv_bulk_eq, dof_manager, name="conservation bulk"),
     pp.ad.Expression(conserv_frac_eq, dof_manager, name="conservation fracture"),
-    pp.ad.Expression(interface_flux_eq, dof_manager, name="interface flux")
+    pp.ad.Expression(interface_flux_eq, dof_manager, name="interface flux"),
 ]
 equation_manager.equations += eqs
 
@@ -409,7 +429,9 @@ for n in range(1, num_time_steps + 1):
     dof_manager.distribute_variable(solution, additive=False)
 
     # Retrieve pressure trace
-    trace_psi = eval_ad_expression(tr_psi_bulk_m, gb, dof_manager, print_expression=False)
+    trace_psi = eval_ad_expression(
+        tr_psi_bulk_m, gb, dof_manager, print_expression=False
+    )
 
     # Export to printing arrays
     psi_b_l.append(d_bulk[pp.STATE][pressure_var][0])
@@ -426,7 +448,9 @@ for n in range(1, num_time_steps + 1):
 # %% Pressure trace evolution
 fig, (ax1, ax2) = plt.subplots(1, 2)
 
-time_array = np.concatenate((np.array([0]), np.linspace(dt, final_time, num_time_steps)))
+time_array = np.concatenate(
+    (np.array([0]), np.linspace(dt, final_time, num_time_steps))
+)
 
 # SUBPLOT 1 -> Left pressure head
 
@@ -438,7 +462,7 @@ ax1.plot(
     linewidth=2,
     linestyle="-",
     marker=".",
-    label=r"$\psi_{bc} = -75\;\mathrm{[cm]}$"
+    label=r"$\psi_{bc} = -75\;\mathrm{[cm]}$",
 )
 
 # Plot minimum entry pressure -> -80 [cm]
@@ -448,34 +472,30 @@ ax1.plot(
     color="green",
     linewidth=2,
     linestyle="-",
-    label=r"$\psi_{L} = -80\;\mathrm{[cm]}$"
+    label=r"$\psi_{L} = -80\;\mathrm{[cm]}$",
 )
 
 # Plot left pressure trace
 ax1.plot(
     time_array,
     tr_psi_b_l,
-    color='orange',
+    color="orange",
     linewidth=2,
     linestyle="-",
     marker=".",
-    label=r"$\mathrm{tr} \; \psi_{\mathrm{left}}$"
+    label=r"$\mathrm{tr} \; \psi_{\mathrm{left}}$",
 )
 
 # Set axes limits
 ax1.set_ylim([-1000, -70])
 
 # Set labels
-ax1.set_xlabel('Time [s]')
-ax1.set_ylabel(r'Pressure head [cm]')
+ax1.set_xlabel("Time [s]")
+ax1.set_ylabel(r"Pressure head [cm]")
 
 # Set legend
 ax1.legend(
-    loc="lower right",
-    fontsize="small",
-    numpoints=1,
-    frameon=True,
-    handlelength=0.5
+    loc="lower right", fontsize="small", numpoints=1, frameon=True, handlelength=0.5
 )
 
 # SUBPLOT 2 -> Right pressure head
@@ -488,7 +508,7 @@ ax2.plot(
     linewidth=2,
     linestyle="None",
     marker=".",
-    label=r"$\Psi_{bc}$"
+    label=r"$\Psi_{bc}$",
 )
 
 # Plot minimum entry pressure -> -80 [cm]
@@ -498,33 +518,27 @@ ax2.plot(
     color="green",
     linewidth=2,
     linestyle="-",
-    label=r"$\Psi_{L}$"
+    label=r"$\Psi_{L}$",
 )
 
 # Plot left pressure trace
 ax2.plot(
     time_array,
     tr_psi_b_r,
-    color='orange',
+    color="orange",
     linewidth=2,
-    label=r"$\mathrm{tr} \,\, \Psi_{right}^m$"
+    label=r"$\mathrm{tr} \,\, \Psi_{right}^m$",
 )
 
 # Set axes limits
 ax2.set_ylim([-1010, -65])
 
 # Set labels
-ax1.set_xlabel('Time [s]')
-ax1.set_ylabel(r'Pressure head [cm]')
+ax1.set_xlabel("Time [s]")
+ax1.set_ylabel(r"Pressure head [cm]")
 
 # Set legend
-ax2.legend(
-    loc="center",
-    fontsize="small",
-    numpoints=1,
-    frameon=True,
-    handlelength=0.5
-)
+ax2.legend(loc="center", fontsize="small", numpoints=1, frameon=True, handlelength=0.5)
 
 plt.show()
 fig.tight_layout()
@@ -533,61 +547,41 @@ fig.savefig("pressureTraceEvolution.pdf", transparent=True)
 # %% Mortar fluxes evolution
 fig, (ax1, ax2) = plt.subplots(1, 2)
 
-time_array = np.concatenate((np.array([0]), np.linspace(dt, final_time, num_time_steps)))
+time_array = np.concatenate(
+    (np.array([0]), np.linspace(dt, final_time, num_time_steps))
+)
 
 # SUBPLOT 1 -> Left pressure head
 
 # Plot left pressure trace
-ax1.plot(
-    time_array,
-    lambda_l,
-    color='orange',
-    linewidth=2,
-    label=r"$\lambda_{left}$"
-)
+ax1.plot(time_array, lambda_l, color="orange", linewidth=2, label=r"$\lambda_{left}$")
 
 # Set axes limits
 # ax1.set_ylim([-150, -70])
 
 # Set labels
-ax1.set_xlabel('Time [s]')
-ax1.set_ylabel(r'Mortar flux')
+ax1.set_xlabel("Time [s]")
+ax1.set_ylabel(r"Mortar flux")
 
 # Set legend
 ax1.legend(
-    loc="upper left",
-    fontsize="small",
-    numpoints=1,
-    frameon=True,
-    handlelength=0.5
+    loc="upper left", fontsize="small", numpoints=1, frameon=True, handlelength=0.5
 )
 
 # SUBPLOT 2 -> Right pressure head
 
 # Plot left pressure trace
-ax2.plot(
-    time_array,
-    lambda_r,
-    color='orange',
-    linewidth=2,
-    label=r"$\lambda_{right}$"
-)
+ax2.plot(time_array, lambda_r, color="orange", linewidth=2, label=r"$\lambda_{right}$")
 
 # Set axes limits
 # ax2.set_ylim([-1010, -65])
 
 # Set labels
-ax1.set_xlabel('Time [s]')
+ax1.set_xlabel("Time [s]")
 # ax1.set_ylabel(r'Pressure head [cm]')
 
 # Set legend
-ax2.legend(
-    loc="center",
-    fontsize="small",
-    numpoints=1,
-    frameon=True,
-    handlelength=0.5
-)
+ax2.legend(loc="center", fontsize="small", numpoints=1, frameon=True, handlelength=0.5)
 
 plt.show()
 fig.tight_layout()
@@ -596,7 +590,9 @@ fig.savefig("pressureAndMortarEvolution.pdf", transparent=True)
 # %%
 fig, ax1 = plt.subplots(1, 1)
 
-time_array = np.concatenate((np.array([0]), np.linspace(dt, final_time, num_time_steps)))
+time_array = np.concatenate(
+    (np.array([0]), np.linspace(dt, final_time, num_time_steps))
+)
 
 # SUBPLOT 1 -> Left pressure head
 
@@ -607,7 +603,7 @@ ax1.plot(
     color="red",
     linewidth=2,
     linestyle="-",
-    label=r"$\Psi_{bc}$"
+    label=r"$\Psi_{bc}$",
 )
 
 # Minimum entry pressure -> -80 [cm]
@@ -617,37 +613,24 @@ ax1.plot(
     color="green",
     linewidth=2,
     linestyle="-",
-    label=r"$\Psi_{L}$"
+    label=r"$\Psi_{L}$",
 )
 
 # Left pressure trace
-ax1.plot(
-    time_array,
-    tr_psi_b_l,
-    color='orange',
-    linewidth=2,
-    label=r"$\lambda_{left}$"
-)
+ax1.plot(time_array, tr_psi_b_l, color="orange", linewidth=2, label=r"$\lambda_{left}$")
 
 # Scaled mortar flux
 ax1.plot(
     time_array,
     100000 * np.asarray(lambda_l),
-    color='green',
+    color="green",
     linewidth=2,
-    label=r"$\lambda_{left}$"
+    label=r"$\lambda_{left}$",
 )
 
-ax1.legend(
-    loc="center",
-    fontsize="small",
-    numpoints=1,
-    frameon=True,
-    handlelength=0.5
-)
+ax1.legend(loc="center", fontsize="small", numpoints=1, frameon=True, handlelength=0.5)
 
 # Set axes limits
 ax1.set_ylim([-100, 2])
 
 plt.show()
-

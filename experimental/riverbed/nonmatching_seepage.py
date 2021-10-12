@@ -42,12 +42,15 @@ import scipy.sparse as sps
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import spy as sparsity
 
-plt.rcParams.update({
-    "text.usetex": True,
-    "font.family": "DejaVu Sans",
-    "font.serif": "Computer Modern Roman",
-    "font.sans-serif": "Computer Modern Sans Serif",
-    "font.cursive": "Zapf Chancery"})
+plt.rcParams.update(
+    {
+        "text.usetex": True,
+        "font.family": "DejaVu Sans",
+        "font.serif": "Computer Modern Roman",
+        "font.sans-serif": "Computer Modern Sans Serif",
+        "font.cursive": "Zapf Chancery",
+    }
+)
 
 from porepy.numerics.ad.grid_operators import DirBC
 from mdunsat.ad_utils.ad_utils import (
@@ -58,11 +61,12 @@ from mdunsat.ad_utils.ad_utils import (
 
 
 def eval_ad_expression(
-        ad_expression: pp.ad.Operator,
-        grid_bucket: pp.GridBucket,
-        dof_manager: pp.DofManager,
-        name: str = None,
-        print_expression: bool = False) -> tuple:
+    ad_expression: pp.ad.Operator,
+    grid_bucket: pp.GridBucket,
+    dof_manager: pp.DofManager,
+    name: str = None,
+    print_expression: bool = False,
+) -> tuple:
 
     """
     Utility function for rapid evaluation of ad expressions.
@@ -115,13 +119,13 @@ def eval_ad_expression(
     # Print if necessary: Meant only for small arrays and matrices, a.k.a. debugging.
     if print_expression:
         if name is None:
-            print('Evaluation of ad expression: \n')
-            print(f'Array with values: \n {expression_num.val} \n')
-            print(f'Jacobian with values: \n {expression_num.jac.A} \n')
+            print("Evaluation of ad expression: \n")
+            print(f"Array with values: \n {expression_num.val} \n")
+            print(f"Jacobian with values: \n {expression_num.jac.A} \n")
         else:
-            print(f'Evaluation of ad expression: {name} \n')
-            print(f'Array with values: \n {expression_num.val} \n')
-            print(f'Jacobian with values: \n {expression_num.jac.A} \n')
+            print(f"Evaluation of ad expression: {name} \n")
+            print(f"Array with values: \n {expression_num.val} \n")
+            print(f"Jacobian with values: \n {expression_num.jac.A} \n")
 
     return expression_num.val, expression_num.jac
 
@@ -142,7 +146,9 @@ g_frac_ghost = gb_ghost.grids_of_dimension(1)[0]
 d_frac_ghost = gb_ghost.node_props(g_frac_ghost)
 d_edge_ghost = gb_ghost.edge_props((g_bulk_ghost, g_frac_ghost))
 mg_ghost = d_edge_ghost["mortar_grid"]
-pp.set_state(d_bulk_ghost, state={"pressure_head": -25 * np.ones(g_bulk_ghost.num_cells)})
+pp.set_state(
+    d_bulk_ghost, state={"pressure_head": -25 * np.ones(g_bulk_ghost.num_cells)}
+)
 pp.set_state(d_frac_ghost, state={"pressure_head": np.zeros(g_frac_ghost.num_cells)})
 
 # Physical bucket... This gb will be the one reflects the actual number of dof that we
@@ -216,10 +222,11 @@ bc_top = np.where(np.abs(fc[1] - Ly) < 1e-5)[0]
 bc_bottom = np.where(np.abs(fc[1]) < 1e-5)[0]
 bc_left = np.where(np.abs(fc[0]) < 1e-5)[0]
 bc_right = np.where(np.abs(fc[0] - Lx) < 1e-5)[0]
-bc_infilt = bc_top[np.where(np.abs(fc[0][bc_top] < (Lx/2)))[0]]
+bc_infilt = bc_top[np.where(np.abs(fc[0][bc_top] < (Lx / 2)))[0]]
 
-cells_left = np.where(np.abs(cc[0] < (Lx/2)))[0]
-cells_right = np.where(np.abs(cc[0] > (Lx/2)))[0]
+cells_left = np.where(np.abs(cc[0] < (Lx / 2)))[0]
+cells_right = np.where(np.abs(cc[0] > (Lx / 2)))[0]
+
 
 def assign_data(param_key, is_conductive):
 
@@ -262,8 +269,12 @@ def assign_data(param_key, is_conductive):
         aperture = 0.1
         k_perp_val = K_sat / (2 * aperture)
         normal_diffusivity = k_perp_val * np.ones(mg.num_cells)
-        data = {"normal_diffusivity": normal_diffusivity, "is_conductive": is_conductive}
+        data = {
+            "normal_diffusivity": normal_diffusivity,
+            "is_conductive": is_conductive,
+        }
         pp.initialize_data(mg, d, param_key, data)
+
 
 #%% Set initial states
 for g, d in gb:
@@ -337,10 +348,13 @@ mpfa_bulk = pp.ad.MpfaAd(param_key, [g_bulk])
 # Obtain single phase flow to compute directionality of upwind scheme
 h_bulk_m = psi_bulk_m + z_cc
 flux1p_bulk = (
-            mpfa_bulk.flux * h_bulk_m
-            + mpfa_bulk.bound_flux * bound_bulk
-            + mpfa_bulk.bound_flux * bulk_face_rest * mortar_proj.mortar_to_primary_int * lmbda_m
-    )
+    mpfa_bulk.flux * h_bulk_m
+    + mpfa_bulk.bound_flux * bound_bulk
+    + mpfa_bulk.bound_flux
+    * bulk_face_rest
+    * mortar_proj.mortar_to_primary_int
+    * lmbda_m
+)
 
 # Upwinding of relative permeabilities
 upwind = UpwindFluxBasedAd(g_bulk, d_bulk, param_key)
@@ -349,9 +363,13 @@ krw_faces_ad = upwind(krw_ad(psi_bulk_m), krw_ad(dirbc_bulk), flux1p_bulk)
 # Darcy fluxes
 h_bulk = psi_bulk + z_cc
 flux_bulk = (
-        krw_faces_ad * mpfa_bulk.flux * h_bulk
-        + krw_faces_ad * mpfa_bulk.bound_flux * bound_bulk
-        + krw_faces_ad * mpfa_bulk.bound_flux * bulk_face_rest * mortar_proj.mortar_to_primary_int * lmbda
+    krw_faces_ad * mpfa_bulk.flux * h_bulk
+    + krw_faces_ad * mpfa_bulk.bound_flux * bound_bulk
+    + krw_faces_ad
+    * mpfa_bulk.bound_flux
+    * bulk_face_rest
+    * mortar_proj.mortar_to_primary_int
+    * lmbda
 )
 
 # Treatment of source and accumulation terms
@@ -367,14 +385,18 @@ if linearization == "newton":
 elif linearization == "modified_picard":
     accum_bulk_active = mass_bulk.mass * psi_bulk * C_ad(psi_bulk_m)
     accum_bulk_inactive = mass_bulk.mass * (
-            theta_ad(psi_bulk_m) - C_ad(psi_bulk_m) * psi_bulk_m - theta_ad(psi_bulk_n)
+        theta_ad(psi_bulk_m) - C_ad(psi_bulk_m) * psi_bulk_m - theta_ad(psi_bulk_n)
     )
 elif linearization == "l_scheme":
     L = 0.0025
     accum_bulk_active = L * mass_bulk.mass * psi_bulk
-    accum_bulk_inactive = mass_bulk.mass * (theta_ad(psi_bulk_m) - L * psi_bulk_m - theta_ad(psi_bulk_n))
+    accum_bulk_inactive = mass_bulk.mass * (
+        theta_ad(psi_bulk_m) - L * psi_bulk_m - theta_ad(psi_bulk_n)
+    )
 else:
-    raise NotImplementedError("Linearization scheme not implemented. Use 'newton', 'modified_picard', or 'l_scheme'.")
+    raise NotImplementedError(
+        "Linearization scheme not implemented. Use 'newton', 'modified_picard', or 'l_scheme'."
+    )
 
 accumulation_bulk = accum_bulk_active + accum_bulk_inactive
 conserv_bulk_eq = accumulation_bulk + dt * div_bulk * flux_bulk - dt * source_bulk
@@ -383,7 +405,7 @@ conserv_bulk_eq = accumulation_bulk + dt * div_bulk * flux_bulk - dt * source_bu
 conserv_bulk_eval = pp.ad.Expression(conserv_bulk_eq, dof_manager)
 conserv_bulk_eval.discretize(gb)
 conserv_bulk_num = conserv_bulk_eval.to_ad(gb)
-#print(f'>> Conservation bulk: \n {conserv_bulk_num.jac.A} \n')
+# print(f'>> Conservation bulk: \n {conserv_bulk_num.jac.A} \n')
 
 # %% Declare equations for the fracture
 
@@ -412,7 +434,9 @@ def fracture_pressure(water_volume):
     return pressure_head
 
 
-fracture_presure_adFun = pp.ad.Function(fracture_pressure, name="Fracture Pressure in ghost grid")
+fracture_presure_adFun = pp.ad.Function(
+    fracture_pressure, name="Fracture Pressure in ghost grid"
+)
 psi_fracture = fracture_presure_adFun(vol_frac)
 psi_fracture_m = fracture_presure_adFun(vol_frac_m)
 
@@ -431,15 +455,29 @@ robin = pp.ad.RobinCouplingAd(param_key, edge_list)
 
 # Projected bulk pressure traces onto the mortar space
 mortar_trace_psi_bulk = (
-        mortar_proj.primary_to_mortar_avg * bulk_face_prol * mpfa_bulk.bound_pressure_cell * psi_bulk
-        + mortar_proj.primary_to_mortar_avg * bulk_face_prol * mpfa_bulk.bound_pressure_face
-        * bulk_face_rest * mortar_proj.mortar_to_primary_int * lmbda
+    mortar_proj.primary_to_mortar_avg
+    * bulk_face_prol
+    * mpfa_bulk.bound_pressure_cell
+    * psi_bulk
+    + mortar_proj.primary_to_mortar_avg
+    * bulk_face_prol
+    * mpfa_bulk.bound_pressure_face
+    * bulk_face_rest
+    * mortar_proj.mortar_to_primary_int
+    * lmbda
 )
 
 mortar_trace_psi_bulk_m = (
-        mortar_proj.primary_to_mortar_avg * bulk_face_prol * mpfa_bulk.bound_pressure_cell * psi_bulk_m
-        + mortar_proj.primary_to_mortar_avg * bulk_face_prol * mpfa_bulk.bound_pressure_face
-        * bulk_face_rest * mortar_proj.mortar_to_primary_int * lmbda_m
+    mortar_proj.primary_to_mortar_avg
+    * bulk_face_prol
+    * mpfa_bulk.bound_pressure_cell
+    * psi_bulk_m
+    + mortar_proj.primary_to_mortar_avg
+    * bulk_face_prol
+    * mpfa_bulk.bound_pressure_face
+    * bulk_face_rest
+    * mortar_proj.mortar_to_primary_int
+    * lmbda_m
 )
 
 
@@ -450,7 +488,9 @@ def fracture_pressure_onto_mortar(psi_frac):
 
     # Get sparse matrix corresponding to the prolongation of fracture cells
     projections = pp.ad.SubdomainProjections(gb=gb_ghost)
-    ghost_frac_cell_prol = projections.cell_prolongation(g_frac_ghost).parse(gb=gb_ghost)
+    ghost_frac_cell_prol = projections.cell_prolongation(g_frac_ghost).parse(
+        gb=gb_ghost
+    )
 
     if isinstance(psi_frac, pp.ad.Ad_array):
         psi_frac_to_mortar = secondary_to_mortar * ghost_frac_cell_prol * psi_frac
@@ -460,7 +500,9 @@ def fracture_pressure_onto_mortar(psi_frac):
     return psi_frac_to_mortar
 
 
-fracture_pressure_onto_mortar_adFun = pp.ad.Function(fracture_pressure_onto_mortar, name="Projection of fracture pressure onto mortars")
+fracture_pressure_onto_mortar_adFun = pp.ad.Function(
+    fracture_pressure_onto_mortar, name="Projection of fracture pressure onto mortars"
+)
 mortar_psi_frac = fracture_pressure_onto_mortar_adFun(psi_fracture)
 mortar_psi_frac_m = fracture_pressure_onto_mortar_adFun(psi_fracture_m)
 
@@ -470,13 +512,15 @@ krw_interface_ad = upwind_interface(
     mortar_trace_psi_bulk_m,
     krw_ad(mortar_trace_psi_bulk_m),
     mortar_psi_frac_m,
-    krw_ad(mortar_psi_frac_m)
+    krw_ad(mortar_psi_frac_m),
 )
 
 is_conductive = pp.ad.ParameterArray(param_key, "is_conductive", edges=edge_list)
 
 # Interface flux
-mortar_flux = robin.mortar_scaling * (mortar_trace_psi_bulk - mortar_psi_frac) * is_conductive
+mortar_flux = (
+    robin.mortar_scaling * (mortar_trace_psi_bulk - mortar_psi_frac) * is_conductive
+)
 interface_flux_eq = mortar_flux + robin.mortar_discr * lmbda
 
 interface_flux_eval = pp.ad.Expression(interface_flux_eq, dof_manager)
@@ -501,7 +545,7 @@ def get_conductive_faces(psi_trace_primary, psi_secondary):
 eqs = [
     pp.ad.Expression(conserv_bulk_eq, dof_manager, name="conservation bulk"),
     pp.ad.Expression(conserv_frac_eq, dof_manager, name="conservation fracture"),
-    pp.ad.Expression(interface_flux_eq, dof_manager, name="interface flux")
+    pp.ad.Expression(interface_flux_eq, dof_manager, name="interface flux"),
 ]
 equation_manager.equations += eqs
 equation_manager.discretize(gb)
@@ -563,31 +607,52 @@ for n in range(1, num_time_steps + 1):
             # end of iteration loop
 
         # Seepage control
-        proj_trace_psi_bulk, _ = eval_ad_expression(mortar_trace_psi_bulk, gb, dof_manager, print_expression=False)
-        proj_psi_frac, _ = eval_ad_expression(mortar_psi_frac, gb, dof_manager, print_expression=False)
+        proj_trace_psi_bulk, _ = eval_ad_expression(
+            mortar_trace_psi_bulk, gb, dof_manager, print_expression=False
+        )
+        proj_psi_frac, _ = eval_ad_expression(
+            mortar_psi_frac, gb, dof_manager, print_expression=False
+        )
         is_mortar_conductive = get_conductive_faces(proj_trace_psi_bulk, proj_psi_frac)
         if control_faces.sum() == 0 and is_mortar_conductive.sum() > 0:
             control_faces = is_mortar_conductive  # make a copy of the sat faces to compare in the next iteration
-            print(f"The faces {np.where(is_mortar_conductive)[0]} are saturated. Solution will be recomputed.")
+            print(
+                f"The faces {np.where(is_mortar_conductive)[0]} are saturated. Solution will be recomputed."
+            )
             # Return pp.ITERATE to previous pp.STATE
             pp.set_iterate(data=d_bulk, iterate={bulk_var: d_bulk[pp.STATE][bulk_var]})
-            pp.set_iterate(data=d_frac, iterate={fracture_var: d_frac[pp.STATE][fracture_var]})
-            pp.set_iterate(data=d_edge, iterate={mortar_var: d_edge[pp.STATE][mortar_var]})
+            pp.set_iterate(
+                data=d_frac, iterate={fracture_var: d_frac[pp.STATE][fracture_var]}
+            )
+            pp.set_iterate(
+                data=d_edge, iterate={mortar_var: d_edge[pp.STATE][mortar_var]}
+            )
         else:
             recompute_solution = False
         # end of control loop
 
     # Update next time step solution. Note that additive should be False here
     print(f"Water volume: {d_frac[pp.STATE][fracture_var][0]}")
-    print(f"Water pressure: {eval_ad_expression(psi_fracture, gb, dof_manager, print_expression=False)[0]}")
+    print(
+        f"Water pressure: {eval_ad_expression(psi_fracture, gb, dof_manager, print_expression=False)[0]}"
+    )
     print(f"Left mortar fluxes: {d_edge[pp.STATE][pp.ITERATE][mortar_var][10:].sum()}")
     print(f"Right mortar fluxes: {d_edge[pp.STATE][pp.ITERATE][mortar_var][:10].sum()}")
     dof_manager.distribute_variable(solution, additive=False)
-    #pp.plot_grid(g_bulk, cell_value=d_bulk[pp.STATE][bulk_var], plot_2d=True, color_map=[-25, 75])
+    # pp.plot_grid(g_bulk, cell_value=d_bulk[pp.STATE][bulk_var], plot_2d=True, color_map=[-25, 75])
     print()
 
     # Export to PARAVIEW
-    pp.set_state(data=d_bulk_ghost, state={"pressure_head": d_bulk[pp.STATE]["pressure_head"]})
-    pp.set_state(data=d_frac_ghost, state={"pressure_head": eval_ad_expression(psi_fracture, gb, dof_manager, print_expression=False)[0]})
+    pp.set_state(
+        data=d_bulk_ghost, state={"pressure_head": d_bulk[pp.STATE]["pressure_head"]}
+    )
+    pp.set_state(
+        data=d_frac_ghost,
+        state={
+            "pressure_head": eval_ad_expression(
+                psi_fracture, gb, dof_manager, print_expression=False
+            )[0]
+        },
+    )
     exporter.write_vtu([pressure_var], time_step=n)
     exporter_ghost.write_vtu(["pressure_head"], time_step=n)

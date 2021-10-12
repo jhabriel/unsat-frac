@@ -20,7 +20,7 @@ def l2_error(g, num_array, true_array, array_sol):
         ).sum() ** 0.5
     else:
         raise ValueError("Solution array not recognized. Use pressure or flux")
-    
+
     return error
 
 
@@ -28,22 +28,23 @@ def make_grid(mesh_size, grid_type):
     """Creates grid bucket given the element size and mesh type"""
 
     if grid_type == "cartesian":
-        n = int(1/mesh_size)
+        n = int(1 / mesh_size)
         gb = pp.meshing.cart_grid([], nx=[n, n], physdims=[1.0, 1.0])
     elif grid_type == "triangular":
         domain = {"xmin": 0.0, "xmax": 1.0, "ymin": 0.0, "ymax": 1.0}
         network_2d = pp.FractureNetwork2d(None, None, domain)
         mesh_args = {"mesh_size_bound": mesh_size, "mesh_size_frac": mesh_size}
-        gb = network_2d.mesh(mesh_args) 
+        gb = network_2d.mesh(mesh_args)
     else:
         raise ValueError("Solution array not recognized. Use pressure or flux")
-    
+
     return gb
 
+
 #%% Model parameters
-solution = "parabolic" # trigonometric
-grid_type = "cartesian" # triangular
-#mesh_size = 0.5
+solution = "parabolic"  # trigonometric
+grid_type = "cartesian"  # triangular
+# mesh_size = 0.5
 # gb = make_grid(mesh_size, grid_type)
 # g = gb.grids_of_dimension(2)[0]
 # d = gb.node_props(g)
@@ -101,28 +102,28 @@ right = np.where(np.abs(fc[0] - 1) < 1e-5)[0]
 
 bc_faces = g.get_boundary_faces()
 bc_type = np.array(bc_faces.size * ["neu"])
-#bc_type[np.in1d(bc_faces, top)] = "neu"
-#bc_type[np.in1d(bc_faces, bottom)] = "neu"
+# bc_type[np.in1d(bc_faces, top)] = "neu"
+# bc_type[np.in1d(bc_faces, bottom)] = "neu"
 bc_type[np.in1d(bc_faces, left)] = "dir"
 bc_type[np.in1d(bc_faces, right)] = "dir"
 bc = pp.BoundaryCondition(g, faces=bc_faces, cond=bc_type)
-            
+
 bc_values = np.zeros(g.num_faces)
 pf = p_ex(fc[0], fc[1])
 qf = q_ex(fc[0], fc[1])
 Qf = qf[0] * fn[0] + qf[1] * fn[1]
 bc_values[bc.is_dir] = pf[bc.is_dir]
-bc_values[bc.is_neu] = np.abs(Qf[bc.is_neu]) # outflow must be positive
+bc_values[bc.is_neu] = np.abs(Qf[bc.is_neu])  # outflow must be positive
 
 source = f_ex(cc[0], cc[1]) * V
 
 specified_parameters = {
     "second_order_tensor": perm,
-    "bc": bc, 
+    "bc": bc,
     "bc_values": bc_values,
-    "source": source
-    }
-    
+    "source": source,
+}
+
 pp.initialize_default_data(g, d, keyword, specified_parameters)
 
 # Declare grid primary variable

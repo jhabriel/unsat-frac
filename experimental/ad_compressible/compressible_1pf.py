@@ -43,11 +43,12 @@ def flux_error(g, num_flux, true_flux):
 
     return error
 
+
 #%% Create unstructured grid
 def make_grid(mesh_size=0.1, grid_type="cartesian", plot_grid=False):
-    
+
     if grid_type == "cartesian":
-        n = int(1/mesh_size)
+        n = int(1 / mesh_size)
         gb = pp.meshing.cart_grid([], nx=[n, n], physdims=[1.0, 1.0])
     elif grid_type == "triangular":
         domain = {"xmin": 0.0, "xmax": 1.0, "ymin": 0.0, "ymax": 1.0}
@@ -62,10 +63,11 @@ def make_grid(mesh_size=0.1, grid_type="cartesian", plot_grid=False):
 
     return gb
 
+
 #%% Set model parameters
-grid_type = "cartesian" # "triangular"
-face_avg_method = "upwind" # "arithmetic"
-solution = "parabolic" # "trigonometric"
+grid_type = "cartesian"  # "triangular"
+face_avg_method = "upwind"  # "arithmetic"
+solution = "parabolic"  # "trigonometric"
 
 #%% Create grid and define physical parameters
 gb = make_grid(mesh_size=0.1, grid_type=grid_type)
@@ -75,8 +77,8 @@ d = gb.node_props(g)
 K = 5  # intrinsic permeability
 c = 0.1  # compressibility
 phi = 0.4  # porosity
-rho_ref = 1 # reference density
-p_ref = 1 # reference pressure
+rho_ref = 1  # reference density
+p_ref = 1  # reference pressure
 
 #%% Time parameters
 final_time = 0.5
@@ -100,8 +102,8 @@ else:
 p_grad_sym = [sym.diff(p_sym, x), sym.diff(p_sym, y)]  # pressure gradient
 q_sym = [-K * p_grad_sym[0], -K * p_grad_sym[1]]  # darcy flux
 rho_sym = rho_ref * sym.exp(c * (p_sym - p_ref))  # rho = rho(p)
-advec_sym = [rho_sym * q_sym[0], rho_sym * q_sym[1]] # advective flux
-advec_div_sym = sym.diff(advec_sym[0], x) + sym.diff(advec_sym[1], y) # divergence
+advec_sym = [rho_sym * q_sym[0], rho_sym * q_sym[1]]  # advective flux
+advec_div_sym = sym.diff(advec_sym[0], x) + sym.diff(advec_sym[1], y)  # divergence
 accum_sym = phi * sym.diff(rho_sym, t)  # phi * d(rho)/dt
 f_sym = accum_sym + advec_div_sym  # source term
 
@@ -125,7 +127,7 @@ def assign_parameters(time):
     fc = g.face_centers
     cc = g.cell_centers
     V = g.cell_volumes
-    
+
     # Permeability tensor
     perm = pp.SecondOrderTensor(K * np.ones(nc))
 
@@ -134,23 +136,23 @@ def assign_parameters(time):
     bottom = np.where(np.abs(fc[1]) < 1e-5)[0]
     left = np.where(np.abs(fc[0]) < 1e-5)[0]
     right = np.where(np.abs(fc[0] - 1) < 1e-5)[0]
-    
+
     bc_faces = g.get_boundary_faces()
     bc_type = np.array(bc_faces.size * ["neu"])
     bc_type[np.in1d(bc_faces, left)] = "dir"
     bc_type[np.in1d(bc_faces, right)] = "dir"
     bc = pp.BoundaryCondition(g, faces=bc_faces, cond=bc_type)
-                    
+
     bc_values = np.zeros(g.num_faces)
-    pf = p_ex(fc[0], fc[1], time * np.ones(nf)) # exact face pressures
-    adv_f = advec_ex(fc[0], fc[1], time * np.ones(nf)) # exact advective velocities
-    Adv_f = adv_f[0] * fn[0] + adv_f[1] * fn[1] # exact advective fluxes
-    
+    pf = p_ex(fc[0], fc[1], time * np.ones(nf))  # exact face pressures
+    adv_f = advec_ex(fc[0], fc[1], time * np.ones(nf))  # exact advective velocities
+    Adv_f = adv_f[0] * fn[0] + adv_f[1] * fn[1]  # exact advective fluxes
+
     bc_values[top] = np.abs(Adv_f[top])
     bc_values[bottom] = np.abs(Adv_f[bottom])
     bc_values[left] = pf[left]
     bc_values[right] = pf[right]
-    
+
     source_term = f_ex(cc[0], cc[1], time * np.ones(nc)) * V
 
     # Initialize data dictionary
@@ -161,7 +163,7 @@ def assign_parameters(time):
         "source": source_term,
         "mass_weight": phi * np.ones(g.num_cells),
     }
-    
+
     # Assing (or update) parameters
     if time == 0:
         pp.initialize_data(g, d, param_key, specified_data)
@@ -193,6 +195,7 @@ def rho(p):
     else:
         return rho_ref * np.exp(c * (p - p_ref))
 
+
 rho_ad = pp.ad.Function(rho, name="density")
 
 #%% Initialize exporter
@@ -207,7 +210,7 @@ div_ad = pp.ad.Divergence(grid_list)  # discrete diveregence
 bound_ad = pp.ad.BoundaryCondition(param_key, grids=grid_list)  # boundary vals
 dir_bound_ad = DirBC(bound_ad, grid_list)
 
-source_ad = pp.ad.ParameterArray(param_key, "source", grids=grid_list) 
+source_ad = pp.ad.ParameterArray(param_key, "source", grids=grid_list)
 mass_ad = pp.ad.MassMatrixAd(param_key, grid_list)
 mpfa_ad = pp.ad.MpfaAd(param_key, grid_list)
 flux_inactive = mpfa_ad.flux * p_m + mpfa_ad.bound_flux * bound_ad
@@ -221,7 +224,7 @@ elif face_avg_method == "upwind":
     rho_faces_ad = upwind(rho_ad(p_m), rho_ad(dir_bound_ad), flux_inactive)
 else:
     raise ValueError("Face averaging method not implemented")
-    
+
 advective_flux_ad = rho_faces_ad * flux_active
 continuity_ad = (
     mass_ad.mass * (rho_ad(p) - rho_ad(p_n))
@@ -254,7 +257,7 @@ for n in range(1, num_time_steps + 1):
         # Solve for pressure increment and update pressure
         A, b = equation_manager.assemble_matrix_rhs()
         solution = spla.spsolve(A, b)
-        
+
         # # Distribute variable to local data dictionaries
         dof_manager.distribute_variable(solution, additive=True, to_iterate=True)
 

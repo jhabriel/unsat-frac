@@ -26,11 +26,12 @@ from mdunsat.ad_utils.ad_utils import (
 
 
 def eval_ad_expression(
-        ad_expression: pp.ad.Operator,
-        grid_bucket: pp.GridBucket,
-        dof_manager: pp.DofManager,
-        name: str = None,
-        print_expression: bool = False) -> tuple:
+    ad_expression: pp.ad.Operator,
+    grid_bucket: pp.GridBucket,
+    dof_manager: pp.DofManager,
+    name: str = None,
+    print_expression: bool = False,
+) -> tuple:
 
     """
     Utility function for rapid evaluation of ad expressions.
@@ -83,19 +84,19 @@ def eval_ad_expression(
     # Print if necessary: Meant only for small arrays and matrices, a.k.a. debugging.
     if print_expression:
         if name is None:
-            print('Evaluation of ad expression: \n')
-            print(f'Array with values: \n {expression_num.val} \n')
-            print(f'Jacobian with values: \n {expression_num.jac.A} \n')
+            print("Evaluation of ad expression: \n")
+            print(f"Array with values: \n {expression_num.val} \n")
+            print(f"Jacobian with values: \n {expression_num.jac.A} \n")
         else:
-            print(f'Evaluation of ad expression: {name} \n')
-            print(f'Array with values: \n {expression_num.val} \n')
-            print(f'Jacobian with values: \n {expression_num.jac.A} \n')
+            print(f"Evaluation of ad expression: {name} \n")
+            print(f"Array with values: \n {expression_num.val} \n")
+            print(f"Jacobian with values: \n {expression_num.jac.A} \n")
 
     return expression_num.val, expression_num.jac
 
 
 #%% Model specifications
-avg_method = "upwind" # artihmetic
+avg_method = "upwind"  # artihmetic
 
 #%% Make grid
 gb = pp.meshing.cart_grid([], nx=[25, 100], physdims=[25, 100])
@@ -103,8 +104,8 @@ g = gb.grids_of_dimension(2)[0]
 d = gb.node_props(g)
 
 dim = gb.dim_max()
-z_cc = g.cell_centers[dim-1]
-z_fc = g.face_centers[dim-1]
+z_cc = g.cell_centers[dim - 1]
+z_fc = g.face_centers[dim - 1]
 
 #%% Physical parameters
 K_sat = 0.00922  # [cm/s] Saturated hydraulic conductivity
@@ -133,20 +134,21 @@ bottom = np.where(np.abs(fc[1]) < 1e-5)[0]
 left = np.where(np.abs(fc[0]) < 1e-5)[0]
 right = np.where(np.abs(fc[0] - Lx) < 1e-5)[0]
 
+
 def assign_data(g, d, param_key, time):
 
     nc = g.num_cells
     perm = pp.SecondOrderTensor(K_sat * np.ones(nc))
 
     bc_faces = g.get_boundary_faces()
-    bc_type = np.array(bc_faces.size * ["neu"]) # bc faces are initially neu
+    bc_type = np.array(bc_faces.size * ["neu"])  # bc faces are initially neu
     bc_type[np.in1d(bc_faces, top)] = "dir"
-    #bc_type[np.in1d(bc_faces, bottom)] = "dir"
+    # bc_type[np.in1d(bc_faces, bottom)] = "dir"
     bc = pp.BoundaryCondition(g, faces=bc_faces, cond=bc_type)
 
     bc_values = np.zeros(g.num_faces)
     bc_values[top] = -75
-    #bc_values[bottom] = -1_000
+    # bc_values[bottom] = -1_000
 
     # Add gravity contribution to Dirichlet faces
     bc_values[bc.is_dir] += z_fc[bc.is_dir]
@@ -172,6 +174,7 @@ def assign_data(g, d, param_key, time):
     else:
         d[pp.PARAMETERS][param_key]["bc_values"] = bc_values
         d[pp.PARAMETERS][param_key]["source"] = source_term
+
 
 #%% Set initial states
 cc = g.cell_centers
@@ -230,9 +233,7 @@ source_ad = pp.ad.ParameterArray(param_key, "source", grids=grid_list)
 mass_ad = pp.ad.MassMatrixAd(param_key, grid_list)
 accum_active = mass_ad.mass * psi * C_ad(psi_m)
 accum_inactive = mass_ad.mass * (
-    theta_ad(psi_m)
-    - C_ad(psi_m) * psi_m
-    - theta_ad(psi_n)
+    theta_ad(psi_m) - C_ad(psi_m) * psi_m - theta_ad(psi_n)
 )
 accumulation_ad = accum_active + accum_inactive
 
@@ -255,7 +256,7 @@ exporter.write_vtu([pressure_var], time_step=0)
 
 #%% Time loop
 total_iteration_counter = 0
-for n in range(1):  #range(1, num_time_steps + 1):
+for n in range(1):  # range(1, num_time_steps + 1):
     iteration_counter = 0
     residual_norm = 1
     rel_res = 1
@@ -293,14 +294,17 @@ for n in range(1):  #range(1, num_time_steps + 1):
     print()
 
     # Evaluate pressure trace
-    trace_val, _ = eval_ad_expression(psi_trace, gb, dof_manager, name="pressure_trace", print_expression=True)
-    bb = eval_ad_expression(psi_trace, gb, dof_manager, name="pressure_trace", print_expression=True)
-    print(f'Right pressure: {trace_val[right]}')
-    print(f'Top pressure: {trace_val[top]}')
+    trace_val, _ = eval_ad_expression(
+        psi_trace, gb, dof_manager, name="pressure_trace", print_expression=True
+    )
+    bb = eval_ad_expression(
+        psi_trace, gb, dof_manager, name="pressure_trace", print_expression=True
+    )
+    print(f"Right pressure: {trace_val[right]}")
+    print(f"Top pressure: {trace_val[top]}")
 
     # Update next time step solution
     d[pp.STATE][pressure_var] = d[pp.STATE][pp.ITERATE][pressure_var].copy()
-
 
     # Export to PARAVIEW
     if np.mod(n, 10) == 0:
@@ -308,5 +312,3 @@ for n in range(1):  #range(1, num_time_steps + 1):
 
 
 #%% Plot pressure trace at the right hand side of the domain
-
-

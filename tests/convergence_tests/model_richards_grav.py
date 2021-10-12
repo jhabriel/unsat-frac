@@ -40,7 +40,7 @@ def l2_error(g, num_array, true_array, array_sol):
         ).sum() ** 0.5
     else:
         raise ValueError("Solution array not recognized. Use pressure or flux")
-    
+
     return error
 
 
@@ -48,22 +48,23 @@ def make_grid(mesh_size, grid_type):
     """Creates grid bucket given the element size and mesh type"""
 
     if grid_type == "cartesian":
-        n = int(1/mesh_size)
+        n = int(1 / mesh_size)
         gb = pp.meshing.cart_grid([], nx=[n, n], physdims=[1.0, 1.0])
     elif grid_type == "triangular":
         domain = {"xmin": 0.0, "xmax": 1.0, "ymin": 0.0, "ymax": 1.0}
         network_2d = pp.FractureNetwork2d(None, None, domain)
         mesh_args = {"mesh_size_bound": mesh_size, "mesh_size_frac": mesh_size}
-        gb = network_2d.mesh(mesh_args) 
+        gb = network_2d.mesh(mesh_args)
     else:
         raise ValueError("Solution array not recognized. Use pressure or flux")
-    
+
     return gb
 
+
 #%% Model specifications
-solution = "parabolic" # trigonometric
-grid_type = "cartesian" # triangular
-avg_method = "arithmetic" # artihmetic
+solution = "parabolic"  # trigonometric
+grid_type = "cartesian"  # triangular
+avg_method = "arithmetic"  # artihmetic
 refine = 4
 
 #%% Make grid
@@ -72,11 +73,11 @@ g = gb.grids_of_dimension(2)[0]
 d = gb.node_props(g)
 
 dim = gb.dim_max()
-z_cc = g.cell_centers[dim-1]
-z_fc = g.face_centers[dim-1]
+z_cc = g.cell_centers[dim - 1]
+z_fc = g.face_centers[dim - 1]
 
 #%% Physical parameters
-k = 5 # intrinsic permeability
+k = 5  # intrinsic permeability
 mu = 3  # dynamic viscosity
 rho = 2  # density
 grav = 9.8  # gravity
@@ -125,9 +126,9 @@ theta_t_sym = sym.diff(theta_sym, t)
 
 # Darcy flux
 q_sym = [
-    -K_sat * krw_sym * (p_grad_sym[0] + z_grad_sym[0]), 
-    -K_sat * krw_sym * (p_grad_sym[1] + z_grad_sym[1])
-    ]
+    -K_sat * krw_sym * (p_grad_sym[0] + z_grad_sym[0]),
+    -K_sat * krw_sym * (p_grad_sym[1] + z_grad_sym[1]),
+]
 
 # Flux divergence
 q_div_sym = sym.diff(q_sym[0], x) + sym.diff(q_sym[1], y)
@@ -145,6 +146,7 @@ param_key = "flow"
 pressure_var = "pressure_head"
 d[pp.PRIMARY_VARIABLES] = {pressure_var: {"cells": 1}}
 
+
 def assign_data(g, d, param_key, time):
 
     nf = g.num_faces
@@ -153,9 +155,9 @@ def assign_data(g, d, param_key, time):
     fc = g.face_centers
     cc = g.cell_centers
     V = g.cell_volumes
-    
+
     dim = gb.dim_max()
-    z_fc = g.face_centers[dim-1]
+    z_fc = g.face_centers[dim - 1]
 
     perm = pp.SecondOrderTensor(K_sat * np.ones(nc))
 
@@ -163,26 +165,26 @@ def assign_data(g, d, param_key, time):
     bottom = np.where(np.abs(fc[1]) < 1e-5)[0]
     left = np.where(np.abs(fc[0]) < 1e-5)[0]
     right = np.where(np.abs(fc[0] - 1) < 1e-5)[0]
-    
+
     bc_faces = g.get_boundary_faces()
-    bc_type = np.array(bc_faces.size * ["neu"]) # bc faces are initially neu
+    bc_type = np.array(bc_faces.size * ["neu"])  # bc faces are initially neu
     bc_type[np.in1d(bc_faces, top)] = "dir"
     bc_type[np.in1d(bc_faces, bottom)] = "dir"
     bc = pp.BoundaryCondition(g, faces=bc_faces, cond=bc_type)
-                    
+
     bc_values = np.zeros(g.num_faces)
-    pf = p_ex(fc[0], fc[1], time * np.ones(nf)) # exact face pressures
-    qf = q_ex(fc[0], fc[1], time * np.ones(nf)) # exact face velocities
-    Qf = qf[0] * fn[0] + qf[1] * fn[1] # exact face fluxes
-    
+    pf = p_ex(fc[0], fc[1], time * np.ones(nf))  # exact face pressures
+    qf = q_ex(fc[0], fc[1], time * np.ones(nf))  # exact face velocities
+    Qf = qf[0] * fn[0] + qf[1] * fn[1]  # exact face fluxes
+
     bc_values[top] = pf[top]
     bc_values[bottom] = pf[bottom]
-    bc_values[left] = np.abs(Qf[left]) # outflow flux 
-    bc_values[right] = np.abs(Qf[right]) # outflow flux
-    
+    bc_values[left] = np.abs(Qf[left])  # outflow flux
+    bc_values[right] = np.abs(Qf[right])  # outflow flux
+
     # Add gravity contribution to Dirichlet faces
     bc_values[bc.is_dir] += z_fc[bc.is_dir]
-    
+
     source_term = f_ex(cc[0], cc[1], time * np.ones(nc)) * V
 
     specified_parameters = {
@@ -197,14 +199,15 @@ def assign_data(g, d, param_key, time):
         "n_vG": n_vG,
         "m_vG": m_vG,
     }
-    
+
     # Initialize or update parameters
     if time == 0.0:
         pp.initialize_data(g, d, param_key, specified_parameters)
     else:
         d[pp.PARAMETERS][param_key]["bc_values"] = bc_values
         d[pp.PARAMETERS][param_key]["source"] = source_term
-    
+
+
 #%% Set initial states
 cc = g.cell_centers
 pp.set_state(d)
@@ -250,7 +253,7 @@ else:
     raise ValueError("Averaging method not implemented")
 
 # Darcy fluxes
-flux_ad = krw_faces_ad * (mpfa_ad.flux * (psi  + z_cc) + mpfa_ad.bound_flux * bound_ad)
+flux_ad = krw_faces_ad * (mpfa_ad.flux * (psi + z_cc) + mpfa_ad.bound_flux * bound_ad)
 
 # Source and accumulation terms (Linearization: Modified Picard iteration)
 # Note: The expression containing the active ad variable (psi) must
@@ -260,9 +263,7 @@ source_ad = pp.ad.ParameterArray(param_key, "source", grids=grid_list)
 mass_ad = pp.ad.MassMatrixAd(param_key, grid_list)
 accum_active = mass_ad.mass * psi * C_ad(psi_m)
 accum_inactive = mass_ad.mass * (
-    theta_ad(psi_m)
-    - C_ad(psi_m) * psi_m
-    - theta_ad(psi_n)
+    theta_ad(psi_m) - C_ad(psi_m) * psi_m - theta_ad(psi_n)
 )
 accumulation_ad = accum_active + accum_inactive
 
@@ -282,7 +283,7 @@ for n in range(1, num_time_steps + 1):
     residual_norm = 1
     rel_res = 1
     time += dt
-    
+
     print("Current time: ", np.round(time, decimals=1))
     assign_data(g, d, param_key, time)
 
@@ -308,13 +309,13 @@ for n in range(1, num_time_steps + 1):
             "rel res",
             residual_norm / initial_residual_norm,
         )
-   
+
         # Prepare next iteration
         iteration_counter += 1
         total_iteration_counter += 1
-        
+
     print()
-         
+
     # Update next time step solution
     d[pp.STATE][pressure_var] = d[pp.STATE][pp.ITERATE][pressure_var].copy()
 

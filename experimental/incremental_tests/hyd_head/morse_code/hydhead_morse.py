@@ -144,7 +144,7 @@ for g, d in gb:
             "alpha_vG": 0.0335,  # van Genuchten parameter [1/cm]
             "n_vG": 2.0,  # van Genuchten parameter [-]
             "m_vG": 0.5,  # (1 - 1 / n_vG) van Genuchten parameter [-]
-            "time_step": tsc.dt  # [s]
+            "time_step": tsc.dt,  # [s]
         }
     elif g.dim == (gfo.dim - 1):  # fractures
         specified_parameters = {
@@ -224,7 +224,9 @@ psib_n: pp.ad.Operator = h_bulk_n - zc_bulk_ad  # pressure head at prev time
 div_bulk = pp.ad.Divergence(grids=bulk_list)
 bound_bulk = pp.ad.BoundaryCondition(kw, grids=bulk_list)
 proj = pp.ad.MortarProjections(gb=gb, grids=grid_list, edges=edge_list)
-ghost_proj = pp.ad.MortarProjections(gb=ghost_gb, grids=ghost_grid_list, edges=ghost_edge_list)
+ghost_proj = pp.ad.MortarProjections(
+    gb=ghost_gb, grids=ghost_grid_list, edges=ghost_edge_list
+)
 subdomain_proj_scalar = pp.ad.SubdomainProjections(grids=grid_list)
 bulk_cell_rest: pp.ad.Matrix = subdomain_proj_scalar.cell_restriction(bulk_list)
 bulk_face_rest: pp.ad.Matrix = subdomain_proj_scalar.face_restriction(bulk_list)
@@ -245,27 +247,26 @@ mpfa_bulk: pp.ad.MpfaAd = pp.ad.MpfaAd(kw, bulk_list)
 flux1p_bulk: pp.ad.Operator = (
     mpfa_bulk.flux * h_bulk_m
     + mpfa_bulk.bound_flux * bound_bulk
-    + mpfa_bulk.bound_flux
-    * bulk_face_rest
-    * proj.mortar_to_primary_int
-    * lmbda_m
+    + mpfa_bulk.bound_flux * bulk_face_rest * proj.mortar_to_primary_int * lmbda_m
 )
 
 # Upwinding of relative permeabilities in the bulk
 upwind: mdu.FluxBaseUpwindAd(gb=gb, grid_list=bulk_list, param_key=kw)
 zf_bulk_ad = pp.ad.Array(bulk_list[0].face_centers[gfo.dim - 1])
-psi_bc_ad = bound_bulk - zf_bulk_ad  # pressure head at the faces (only used the dir bc values)
+psi_bc_ad = (
+    bound_bulk - zf_bulk_ad
+)  # pressure head at the faces (only used the dir bc values)
 krw_faces_ad: pp.ad.Operator = upwind(krw_ad(psib_m), krw_ad(psi_bc_ad), flux1p_bulk)
 
 # Multiphase Darcy flux
 flux_bulk: pp.ad.Operator = (
-        krw_faces_ad * mpfa_bulk.flux * h_bulk
-        + krw_faces_ad * mpfa_bulk.bound_flux * bound_bulk
-        + krw_faces_ad
-        * mpfa_bulk.bound_flux
-        * bulk_face_rest
-        * proj.mortar_to_primary_int
-        * lmbda
+    krw_faces_ad * mpfa_bulk.flux * h_bulk
+    + krw_faces_ad * mpfa_bulk.bound_flux * bound_bulk
+    + krw_faces_ad
+    * mpfa_bulk.bound_flux
+    * bulk_face_rest
+    * proj.mortar_to_primary_int
+    * lmbda
 )
 
 # Accumulation terms and sources
@@ -348,16 +349,16 @@ robin = pp.ad.RobinCouplingAd(kw, edge_list)
 
 # Projected bulk pressure traces onto the mortar grid
 mortar_hb = (
-        projections.primary_to_mortar_avg
-        * bulk_face_prol
-        * mpfa_bulk.bound_pressure_cell
-        * h_bulk
-        + projections.primary_to_mortar_avg
-        * bulk_face_prol
-        * mpfa_bulk.bound_pressure_face
-        * bulk_face_rest
-        * projections.mortar_to_primary_int
-        * lmbda
+    projections.primary_to_mortar_avg
+    * bulk_face_prol
+    * mpfa_bulk.bound_pressure_cell
+    * h_bulk
+    + projections.primary_to_mortar_avg
+    * bulk_face_prol
+    * mpfa_bulk.bound_pressure_face
+    * bulk_face_rest
+    * projections.mortar_to_primary_int
+    * lmbda
 )
 
 mortar_hb_m = (
@@ -406,8 +407,7 @@ pp.set_state(
 pp.set_state(
     d_frac_ghost,
     state={
-        node_var: d_frac[pp.PARAMETERS][kw]["datum"]
-        * np.ones(g_frac_ghost.num_cells),
+        node_var: d_frac[pp.PARAMETERS][kw]["datum"] * np.ones(g_frac_ghost.num_cells),
         "pressure_head": d_frac[pp.STATE][node_var] - z_frac_ghost,
     },
 )

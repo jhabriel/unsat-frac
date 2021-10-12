@@ -13,7 +13,7 @@ from porepy.numerics.ad.functions import heaviside
 from porepy.numerics.ad.forward_mode import Ad_array
 from typing import Callable
 
-#%%# FACE AVERAGING SCHEMES 
+#%%# FACE AVERAGING SCHEMES
 
 # Arithmetic average of the bulk
 class ArithmeticAverageAd(ApplicableOperator):
@@ -62,22 +62,22 @@ class ArithmeticAverageAd(ApplicableOperator):
             neu_fcs = bc.is_neu.nonzero()  # Neumann boundary faces
             dir_fcs = bc.is_dir.nonzero()  # dirichlet boundary faces
             int_fcs = self._g.get_internal_faces()  # internal faces
-    
+
             # Faces neighboring mapping
             fcs_neigh = np.zeros((self._g.num_faces, 2), dtype=int)
             fcs_neigh[:, 0] = self._g.cell_face_as_dense()[0]
             fcs_neigh[:, 1] = self._g.cell_face_as_dense()[1]
             int_fcs_neigh = fcs_neigh[int_fcs]
-    
+
             # Initialize array
             face_avg = np.zeros(self._g.num_faces)
-          
+
             # Values at Neumann boundaries
             neu_cells_neigh = fcs_neigh[neu_fcs]
             if neu_cells_neigh.size > 0:
                 neu_cells = neu_cells_neigh[(neu_cells_neigh >= 0).nonzero()]
-                face_avg[neu_fcs] =  inner_values[neu_cells]
-            
+                face_avg[neu_fcs] = inner_values[neu_cells]
+
             # Values at Dirichlet boundaries
             dir_cells_neigh = fcs_neigh[dir_fcs]
             if dir_cells_neigh.size > 0:
@@ -85,21 +85,21 @@ class ArithmeticAverageAd(ApplicableOperator):
                 face_avg[dir_fcs] = 0.5 * (
                     dir_bound_values[dir_fcs] + inner_values[dir_cells]
                 )
-            
+
             # Values at internal faces
             face_avg[int_fcs] = 0.5 * (
-                inner_values[int_fcs_neigh[:, 0]]
-                + inner_values[int_fcs_neigh[:, 1]]
+                inner_values[int_fcs_neigh[:, 0]] + inner_values[int_fcs_neigh[:, 1]]
             )
-        
-        return sps.spdiags(face_avg, 0, self._g.num_faces, self._g.num_faces) 
-    
-    
-# Flux-based upwinding scheme   
+
+        return sps.spdiags(face_avg, 0, self._g.num_faces, self._g.num_faces)
+
+
+# Flux-based upwinding scheme
 class UpwindFluxBasedAd(ApplicableOperator):
     """ Flux based upwinding of cell-center arrays """
+
     # Credits: @jwboth
-    
+
     def __init__(self, g, d, param_key, hs: Callable = heaviside):
 
         self._set_tree()
@@ -130,10 +130,13 @@ class UpwindFluxBasedAd(ApplicableOperator):
         cf_is_boundary = np.logical_not(cf_inner)
         self._cf_is_boundary = cf_is_boundary
         self._is_dir = d[pp.PARAMETERS][param_key]["bc"].is_dir.copy()
-        self._cf_is_dir = [np.logical_and(cf_is_boundary[i], self._is_dir) for i in range(0, 2)]
+        self._cf_is_dir = [
+            np.logical_and(cf_is_boundary[i], self._is_dir) for i in range(0, 2)
+        ]
         self._is_neu = d[pp.PARAMETERS][param_key]["bc"].is_neu.copy()
-        self._cf_is_neu = [np.logical_and(cf_is_boundary[i], self._is_neu) for i in range(0, 2)]
-
+        self._cf_is_neu = [
+            np.logical_and(cf_is_boundary[i], self._is_neu) for i in range(0, 2)
+        ]
 
     def __repr__(self) -> str:
         return " Flux-based upwind AD face operator"
@@ -165,7 +168,7 @@ class UpwindFluxBasedAd(ApplicableOperator):
             Arithmetic averaged values at the faces of the grid
 
         """
-        
+
         # Rename internal properties
         hs = self._heaviside
         cf_inner = self._cf_inner
@@ -179,12 +182,12 @@ class UpwindFluxBasedAd(ApplicableOperator):
             val_f = [cf_inner[i] * inner_values for i in range(0, 2)]
             for i in range(0, 2):
                 val_f[i][cf_is_boundary[i]] = dir_bound_values[cf_is_boundary[i]]
-                #val_f[i][self._cf_is_dir[i]] = dir_bound_values[self._cf_is_dir[i]]
+                # val_f[i][self._cf_is_dir[i]] = dir_bound_values[self._cf_is_dir[i]]
 
         # Evaluate the Heaviside function of the "flux directions".
         hs_f_01 = hs(face_flux)
         hs_f_10 = hs(-face_flux)
-        
+
         # Determine the face mobility by utilizing the general idea (see above).
         face_upwind = val_f[0] * hs_f_01 + val_f[1] * hs_f_10
 
@@ -195,95 +198,102 @@ class UpwindFluxBasedAd(ApplicableOperator):
         return sps.spdiags(face_upwind, 0, self._g.num_faces, self._g.num_faces)
 
 
-#%% SOIL WATER RETENTION CURVES 
+#%% SOIL WATER RETENTION CURVES
+
 
 class vanGenuchten:
     def __init__(self, g, d, param_key):
         self._g = g
         self._d = d
         self._param_key = param_key
-        
+
         params = self._d[pp.PARAMETERS][self._param_key]
         self.alpha_vG = params["alpha_vG"]
         self.theta_r = params["theta_r"]
         self.theta_s = params["theta_s"]
         self.n_vG = params["n_vG"]
         self.m_vG = params["m_vG"]
-        
+
     def __repr__(self):
         print("Soil Water Retention Curve: van Genuchtem-Mualem model")
-        
+
     def is_unsat(self, p):
         """ Determine whether the cell is saturated or not """
-        
+
         if isinstance(p, pp.ad.Ad_array):
             raise TypeError("Pressure cannot be AD. Expected inactive variable.")
         else:
             # {1, pressure_head < 0
             # {0, otherwise
-            return 1 - heaviside(p, 1)  
-        
-    
+            return 1 - heaviside(p, 1)
+
     def water_content(self, p):
         """ Water content as a function of the pressure head"""
-                
+
         if isinstance(p, pp.ad.Ad_array):
             is_unsat = self.is_unsat(p.val)
-            is_sat = 1 - is_unsat        
+            is_sat = 1 - is_unsat
             num = self.theta_s - self.theta_r
             den = (1 + (self.alpha_vG * pp.ad.abs(p)) ** self.n_vG) ** self.m_vG
-            theta = ((num * den ** (-1) + self.theta_r) * is_unsat
-                     + self.theta_s * is_sat)
+            theta = (
+                num * den ** (-1) + self.theta_r
+            ) * is_unsat + self.theta_s * is_sat
         else:
             is_unsat = self.is_unsat(p)
-            is_sat = 1 - is_unsat        
+            is_sat = 1 - is_unsat
             num = self.theta_s - self.theta_r
             den = (1 + (self.alpha_vG * np.abs(p)) ** self.n_vG) ** self.m_vG
-            theta = ((num * den ** (-1) + self.theta_r) * is_unsat 
-                     + self.theta_s * is_sat)
-        
+            theta = (
+                num * den ** (-1) + self.theta_r
+            ) * is_unsat + self.theta_s * is_sat
+
         return theta
-    
+
     def effective_saturation(self, p):
         """ Effective saturation as a function of the water content """
-        
+
         num = self.water_content(p) - self.theta_r
-        den = self.theta_s - self.theta_r 
+        den = self.theta_s - self.theta_r
         s_eff = num * den ** (-1)
-        
+
         return s_eff
-    
-    
+
     def relative_permeability(self, p):
         """ Relative permeability as a function of the effective saturation"""
 
         if isinstance(p, pp.ad.Ad_array):
             raise TypeError("Pressure cannot be AD. Expected previous_iteration()")
         else:
-            krw = (self.effective_saturation(p) ** (0.5) * 
-                   (1 - (1 - self.effective_saturation(p) ** (1/self.m_vG)) 
-                    ** self.m_vG) ** 2 )
+            krw = (
+                self.effective_saturation(p) ** (0.5)
+                * (
+                    1
+                    - (1 - self.effective_saturation(p) ** (1 / self.m_vG)) ** self.m_vG
+                )
+                ** 2
+            )
 
         return krw
 
-    
     def moisture_capacity(self, p):
         """ Specific moisture capacity as a function of the pressure head"""
-           
+
         if isinstance(p, pp.ad.Ad_array):
             raise TypeError("Pressure cannot be AD. Expected previous_iteration()")
         else:
             is_unsat = self.is_unsat(p)
-            is_sat = 1 - is_unsat  
-            num = (- self.m_vG * self.n_vG * 
-                   (self.theta_s - self.theta_r) * 
-                   (self.alpha_vG * np.abs(p)) ** self.n_vG)
-            den = (p * ((self.alpha_vG * np.abs(p)) ** self.n_vG + 1) 
-                   ** (self.m_vG + 1))
-            C = (np.divide(num, den, out=np.zeros_like(num), where=den!=0) * self.is_unsat(p)
-                + 0 * is_sat)      
-            
+            is_sat = 1 - is_unsat
+            num = (
+                -self.m_vG
+                * self.n_vG
+                * (self.theta_s - self.theta_r)
+                * (self.alpha_vG * np.abs(p)) ** self.n_vG
+            )
+            den = p * ((self.alpha_vG * np.abs(p)) ** self.n_vG + 1) ** (self.m_vG + 1)
+            C = (
+                np.divide(num, den, out=np.zeros_like(num), where=den != 0)
+                * self.is_unsat(p)
+                + 0 * is_sat
+            )
+
         return C
-            
-            
-            

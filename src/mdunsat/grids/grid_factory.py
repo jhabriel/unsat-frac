@@ -10,14 +10,15 @@ Edge = Tuple[pp.Grid, pp.Grid]
 class GridFactory:
     """Parent class in charge of creating physical and ghost grid buckets"""
 
-    def __init__(self,
-                 dim: Literal[2, 3],
-                 mesh_args: Union[Dict[str, int], Dict[str, float]],
-                 csv_file: str,
-                 domain: Optional[Union[Dict[str, int], Dict[str, float]]] = None,
-                 has_domain: Optional[Literal[True, False]] = None,
-                 constraints: Optional[List[int]] = None,
-                 ):
+    def __init__(
+        self,
+        dim: Literal[2, 3],
+        mesh_args: Union[Dict[str, int], Dict[str, float]],
+        csv_file: str,
+        domain: Optional[Union[Dict[str, int], Dict[str, float]]] = None,
+        has_domain: Optional[Literal[True, False]] = None,
+        constraints: Optional[List[int]] = None,
+    ):
         """
         Init method for the class
 
@@ -99,7 +100,9 @@ class GridFactory:
         """Construct physical and ghost grid buckets"""
 
         # First, create the ghost grid bucket
-        network = pp.fracture_importer.network_2d_from_csv(self.file, domain=self.domain)
+        network = pp.fracture_importer.network_2d_from_csv(
+            self.file, domain=self.domain
+        )
         if self.constraints is not None:
             gb_ghost = network.mesh(self.mesh_args)
         else:
@@ -128,8 +131,8 @@ class GridFactory:
             ymin: float = g.bounding_box()[0][1]
             xmax: float = g.bounding_box()[1][0]
             ymax: float = g.bounding_box()[1][1]
-            zmin: float = 0.
-            zmax: float = 0.
+            zmin: float = 0.0
+            zmax: float = 0.0
             nodes = np.array([[xmin, xmax], [ymin, ymax], [zmin, zmax]])
             frac_nodes.append(nodes)
 

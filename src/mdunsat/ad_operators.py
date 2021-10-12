@@ -17,6 +17,7 @@ Edge = Tuple[pp.Grid, pp.Grid]
 
 class FluxBaseUpwindAd(ApplicableOperator):
     """Flux based upwinding for faces"""
+
     # Credits: @jwboth
 
     def __init__(
@@ -144,12 +145,13 @@ class ParameterScalar(Operator):
     broadcasting issues.
     """
 
-    def __init__(self,
-                 param_keyword: str,
-                 scalar_keyword: str,
-                 grids: Optional[List[pp.Grid]] = None,
-                 edges: Optional[List[Edge]] = None
-        ):
+    def __init__(
+        self,
+        param_keyword: str,
+        scalar_keyword: str,
+        grids: Optional[List[pp.Grid]] = None,
+        edges: Optional[List[Edge]] = None,
+    ):
         """Construct a wrapper for a scalar parameter for a grid list or an edge list
 
         Parameters:
@@ -167,7 +169,9 @@ class ParameterScalar(Operator):
         super().__init__()
 
         if (grids is None) and (edges is None):
-            raise ValueError("ParameterScalar needs at least a grid list or an edge list.")
+            raise ValueError(
+                "ParameterScalar needs at least a grid list or an edge list."
+            )
         if (grids is not None) and (edges is not None):
             raise ValueError("grid_list and edge_list cannot be passed simultaneously.")
         if grids is not None and len(grids) > 1:
@@ -212,4 +216,6 @@ class ParameterScalar(Operator):
         elif isinstance(val, int):
             return float(val)
         else:
-            raise TypeError(f"Expected 'int' or 'float'. Encountered {type(val)} instead.")
+            raise TypeError(
+                f"Expected 'int' or 'float'. Encountered {type(val)} instead."
+            )

@@ -53,7 +53,7 @@ def l2_error(g, num_array, true_array, array_sol):
         ).sum() ** 0.5
     else:
         raise ValueError("Solution array not recognized. Use pressure or flux")
-    
+
     return error
 
 
@@ -61,22 +61,23 @@ def make_grid(mesh_size, grid_type):
     """Creates grid bucket given the element size and mesh type"""
 
     if grid_type == "cartesian":
-        n = int(1/mesh_size)
+        n = int(1 / mesh_size)
         gb = pp.meshing.cart_grid([], nx=[n, n], physdims=[1.0, 1.0])
     elif grid_type == "triangular":
         domain = {"xmin": 0.0, "xmax": 1.0, "ymin": 0.0, "ymax": 1.0}
         network_2d = pp.FractureNetwork2d(None, None, domain)
         mesh_args = {"mesh_size_bound": mesh_size, "mesh_size_frac": mesh_size}
-        gb = network_2d.mesh(mesh_args) 
+        gb = network_2d.mesh(mesh_args)
     else:
         raise ValueError("Solution array not recognized. Use pressure or flux")
-    
+
     return gb
 
+
 #%% Model specifications
-solution = "parabolic" # trigonometric
-grid_type = "cartesian" # triangular
-avg_method = "upwind" # artihmetic
+solution = "parabolic"  # trigonometric
+grid_type = "cartesian"  # triangular
+avg_method = "upwind"  # artihmetic
 refine = 4
 
 #%% Make grid
@@ -98,8 +99,8 @@ dt = final_time / num_time_steps
 K = 1  # intrinsic permeability
 c = 0.1  # compressibility
 phi = 0.4  # porosity
-rho_ref = 1 # reference density
-p_ref = 1 # reference pressure
+rho_ref = 1  # reference density
+p_ref = 1  # reference pressure
 
 #%% Exact solution
 x = sym.symbols("x", real=True)
@@ -131,8 +132,9 @@ param_key = "flow"
 pressure_variable = "pressure"
 d[pp.PRIMARY_VARIABLES] = {pressure_variable: {"cells": 1}}
 
+
 def assign_data(g, d, param_key, time):
-    
+
     nf = g.num_faces
     nc = g.num_cells
     fn = g.face_normals
@@ -146,26 +148,26 @@ def assign_data(g, d, param_key, time):
     bottom = np.where(np.abs(fc[1]) < 1e-5)[0]
     left = np.where(np.abs(fc[0]) < 1e-5)[0]
     right = np.where(np.abs(fc[0] - 1) < 1e-5)[0]
-    
+
     bc_faces = g.get_boundary_faces()
-    #bc_type = np.array(bc_faces.size * ["neu"])
+    # bc_type = np.array(bc_faces.size * ["neu"])
     bc_type = np.array(bc_faces.size * ["dir"])
     bc_type[np.in1d(bc_faces, left)] = "dir"
     bc_type[np.in1d(bc_faces, right)] = "dir"
     bc = pp.BoundaryCondition(g, faces=bc_faces, cond=bc_type)
-                    
+
     bc_values = np.zeros(g.num_faces)
     pf = p_ex(fc[0], fc[1], time * np.ones(nf))
     qf = q_ex(fc[0], fc[1], time * np.ones(nf))
     Qf = qf[0] * fn[0] + qf[1] * fn[1]
-    
-    # bc_values[top] = np.abs(Qf[top]) # outflow flux 
+
+    # bc_values[top] = np.abs(Qf[top]) # outflow flux
     # bc_values[bottom] = np.abs(Qf[bottom]) # outflow flux
-    bc_values[top] = pf[top] # outflow flux 
-    bc_values[bottom] = pf[bottom] # outflow flux
+    bc_values[top] = pf[top]  # outflow flux
+    bc_values[bottom] = pf[bottom]  # outflow flux
     bc_values[left] = pf[left]
     bc_values[right] = pf[right]
-    
+
     source_term = f_ex(cc[0], cc[1], time * np.ones(nc)) * V
 
     specified_parameters = {
@@ -175,13 +177,13 @@ def assign_data(g, d, param_key, time):
         "source": source_term,
         "mass_weight": phi * np.ones(nc),
     }
-    
+
     if time == 0.0:
         pp.initialize_data(g, d, param_key, specified_parameters)
     else:
         d[pp.PARAMETERS][param_key]["bc_values"] = bc_values
         d[pp.PARAMETERS][param_key]["source"] = source_term
- 
+
 
 #%% Set initial states
 cc = g.cell_centers
@@ -202,6 +204,7 @@ p_n = p.previous_timestep()
 def rho(p):
     return rho_ref * pp.ad.exp(c * (p - p_ref))
 
+
 rho_ad = pp.ad.Function(rho, name="density")
 
 #%% AD operators and discrete expressions/equations
@@ -211,7 +214,7 @@ assign_data(g, d, param_key, time)
 div_ad = pp.ad.Divergence(grid_list)  # discrete diveregence
 bound_ad = pp.ad.BoundaryCondition(param_key, grids=grid_list)  # boundary vals
 dir_bound_ad = DirBC(bound_ad, grid_list)  # dirichlet bc vals
-   
+
 # MPFA discretization
 tpfa_ad = GeneralTpfaAd(param_key)
 tpfa_ad.discretize(g, d)
@@ -224,7 +227,7 @@ flux_1p_ad = tpfa_ad.flux(harm_avg, p_m, bound_ad)
 upwind = UpwindAd(g, tpfa_ad, hs)
 rho_faces_ad = upwind(rho_ad(p), p, rho_ad(dir_bound_ad), dir_bound_ad)
 darcy_flux = tpfa_ad.flux(harm_avg, p, bound_ad)
-advective_flux_ad =  darcy_flux * rho_faces_ad
+advective_flux_ad = darcy_flux * rho_faces_ad
 
 # # Face-averaging of densities
 # if avg_method == "arithmetic":
@@ -235,7 +238,7 @@ advective_flux_ad =  darcy_flux * rho_faces_ad
 #     rho_faces_ad = upwind(rho_ad(p_m), rho_ad(dir_bound_ad), flux_1p_ad)
 # else:
 #     raise ValueError("Averaging method not implemented")
-   
+
 # # Fluxes
 # darcy_flux = mpfa_ad.flux * p + mpfa_ad.bound_flux * bound_ad
 # advective_flux_ad =  rho_faces_ad * darcy_flux
@@ -253,7 +256,7 @@ eqs = pp.ad.Expression(continuity_ad, dof_manager)  # convert to expression
 equation_manager.equations.clear()
 equation_manager.equations.append(eqs)  # feed eq to the equation manager
 equation_manager.discretize(gb)  # discretize problem
-    
+
 
 #%% Time loop
 total_iteration_counter = 0
@@ -262,8 +265,7 @@ for n in range(1, num_time_steps + 1):
     residual_norm = 1
     rel_res = 1
     time += dt
-    
-    
+
     print("Current time: ", np.round(time, decimals=3))
     assign_data(g, d, param_key, time)
 
@@ -282,27 +284,26 @@ for n in range(1, num_time_steps + 1):
             initial_residual_norm = max(residual_norm, initial_residual_norm)
         rel_res = residual_norm / initial_residual_norm
         print(
-                "iteration",
-                iteration_counter,
-                "abs res",
-                residual_norm,
-                "rel res",
-                residual_norm / initial_residual_norm,
-            )
-       
-   
+            "iteration",
+            iteration_counter,
+            "abs res",
+            residual_norm,
+            "rel res",
+            residual_norm / initial_residual_norm,
+        )
+
         # Prepare next iteration
         iteration_counter += 1
         total_iteration_counter += 1
-        
+
     print()
-            
+
     # Update next time step solution
     d[pp.STATE][pressure_variable] = d[pp.STATE][pp.ITERATE][pressure_variable].copy()
     d[pp.STATE]["p_ex"] = p_ex(
         g.cell_centers[0], g.cell_centers[1], time * np.ones(g.num_cells)
     )
-    
+
 #%% Compute discrete L2-errors
 num_pressure = d[pp.STATE][pressure_variable].copy()
 true_pressure = d[pp.STATE]["p_ex"]

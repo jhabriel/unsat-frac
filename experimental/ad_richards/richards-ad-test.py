@@ -1,4 +1,3 @@
-
 """AD implementation of Richards' equation. TPFA solver for manufactured solution on unit square.
 
 Credit and first contact person: Jakub Both.

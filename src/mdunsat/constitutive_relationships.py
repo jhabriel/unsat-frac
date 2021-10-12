@@ -47,7 +47,9 @@ class FractureVolume:
     def __repr__(self) -> str:
         return "Hydrostatic water fracture pressure Ad operator"
 
-    def fracture_volume(self, hydraulic_head: Union[AdArray, NonAd]) -> Union[AdArray, NonAd]:
+    def fracture_volume(
+        self, hydraulic_head: Union[AdArray, NonAd]
+    ) -> Union[AdArray, NonAd]:
 
         # Get grid volume
         grid_vol: float = self._g.cell_volumes.sum() * self._aperture
@@ -132,7 +134,9 @@ class VanGenuchtenMualem:
         return "Soil-water retention curve (van Genuchten-Mualem) object."
 
     # Public methods
-    def water_content(self, as_ad: bool = False) -> Union['_water_content', pp.ad.Function]:
+    def water_content(
+        self, as_ad: bool = False
+    ) -> Union["_water_content", pp.ad.Function]:
         """
         Water content as a function of the pressure head.
 
@@ -149,8 +153,9 @@ class VanGenuchtenMualem:
         else:
             return self._water_content
 
-    def relative_permeability(self, as_ad: bool = False) -> Union['_relative_permeability',
-                                                                  pp.ad.Function]:
+    def relative_permeability(
+        self, as_ad: bool = False
+    ) -> Union["_relative_permeability", pp.ad.Function]:
         """
         Relative permeability as a function of the pressure head.
 
@@ -163,12 +168,15 @@ class VanGenuchtenMualem:
 
         """
         if as_ad:
-            return pp.ad.Function(self._relative_permeability, name="relative permeability")
+            return pp.ad.Function(
+                self._relative_permeability, name="relative permeability"
+            )
         else:
             return self._relative_permeability
 
-    def moisture_capacity(self, as_ad: bool = False) -> Union['_moisture_capacity',
-                                                              pp.ad.Function]:
+    def moisture_capacity(
+        self, as_ad: bool = False
+    ) -> Union["_moisture_capacity", pp.ad.Function]:
         """
         Specific moisture capacity as a function of the pressure head.
 
@@ -181,13 +189,15 @@ class VanGenuchtenMualem:
 
         """
         if as_ad:
-            return pp.ad.Function(self._moisture_capacity, name="specific moisture capacity")
+            return pp.ad.Function(
+                self._moisture_capacity, name="specific moisture capacity"
+            )
         else:
             return self._moisture_capacity
 
     # Private methods
     def _water_content(
-            self, pressure_head: Union[AdArray, NonAd]
+        self, pressure_head: Union[AdArray, NonAd]
     ) -> Union[AdArray, NonAd]:
         """Water content as function of the pressure head.
 
@@ -202,24 +212,24 @@ class VanGenuchtenMualem:
             is_sat = 1 - is_unsat
             num = self.theta_s - self.theta_r
             den = (
-                          1 + (self.alpha_vG * pp.ad.abs(pressure_head)) ** self.n_vG
-                  ) ** self.m_vG
+                1 + (self.alpha_vG * pp.ad.abs(pressure_head)) ** self.n_vG
+            ) ** self.m_vG
             theta = (
-                            num * den ** (-1) + self.theta_r
-                    ) * is_unsat + self.theta_s * is_sat
+                num * den ** (-1) + self.theta_r
+            ) * is_unsat + self.theta_s * is_sat
         else:  # typically int, float, or np.ndarray
             is_unsat = self._is_unsat(pressure_head)
             is_sat = 1 - is_unsat
             num = self.theta_s - self.theta_r
             den = (
-                          1 + (self.alpha_vG * np.abs(pressure_head)) ** self.n_vG
-                  ) ** self.m_vG
+                1 + (self.alpha_vG * np.abs(pressure_head)) ** self.n_vG
+            ) ** self.m_vG
             theta = (num / den + self.theta_r) * is_unsat + self.theta_s * is_sat
 
         return theta
 
     def _effective_saturation(
-            self, pressure_head: Union[AdArray, NonAd]
+        self, pressure_head: Union[AdArray, NonAd]
     ) -> Union[AdArray, NonAd]:
         """Effective saturation as a function of the pressure head.
 
@@ -269,20 +279,20 @@ class VanGenuchtenMualem:
             is_unsat = self._is_unsat(pressure_head)
             is_sat = 1 - is_unsat
             num = (
-                    -self.m_vG
-                    * self.n_vG
-                    * (self.theta_s - self.theta_r)
-                    * (self.alpha_vG * np.abs(pressure_head)) ** self.n_vG
+                -self.m_vG
+                * self.n_vG
+                * (self.theta_s - self.theta_r)
+                * (self.alpha_vG * np.abs(pressure_head)) ** self.n_vG
             )
             den = pressure_head * (
-                    (self.alpha_vG * np.abs(pressure_head)) ** self.n_vG + 1
+                (self.alpha_vG * np.abs(pressure_head)) ** self.n_vG + 1
             ) ** (self.m_vG + 1)
             # Here, we have to be particulary careful with zero division. If zero is
             # encountered in the denominator, we force the moisture capacity to be zero.
             moist_capacity = (
-                    np.divide(num, den, out=np.zeros_like(num), where=den != 0)
-                    * self._is_unsat(pressure_head)
-                    + 0 * is_sat
+                np.divide(num, den, out=np.zeros_like(num), where=den != 0)
+                * self._is_unsat(pressure_head)
+                + 0 * is_sat
             )
 
         return moist_capacity

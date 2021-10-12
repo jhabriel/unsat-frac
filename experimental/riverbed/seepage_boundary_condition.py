@@ -49,11 +49,12 @@ from mdunsat.ad_utils.ad_utils import (
 
 
 def eval_ad_expression(
-        ad_expression: pp.ad.Operator,
-        grid_bucket: pp.GridBucket,
-        dof_manager: pp.DofManager,
-        name: str = None,
-        print_expression: bool = False) -> tuple:
+    ad_expression: pp.ad.Operator,
+    grid_bucket: pp.GridBucket,
+    dof_manager: pp.DofManager,
+    name: str = None,
+    print_expression: bool = False,
+) -> tuple:
 
     """
     Utility function for rapid evaluation of ad expressions.
@@ -106,13 +107,13 @@ def eval_ad_expression(
     # Print if necessary: Meant only for small arrays and matrices, a.k.a. debugging.
     if print_expression:
         if name is None:
-            print('Evaluation of ad expression: \n')
-            print(f'Array with values: \n {expression_num.val} \n')
-            print(f'Jacobian with values: \n {expression_num.jac.A} \n')
+            print("Evaluation of ad expression: \n")
+            print(f"Array with values: \n {expression_num.val} \n")
+            print(f"Jacobian with values: \n {expression_num.jac.A} \n")
         else:
-            print(f'Evaluation of ad expression: {name} \n')
-            print(f'Array with values: \n {expression_num.val} \n')
-            print(f'Jacobian with values: \n {expression_num.jac.A} \n')
+            print(f"Evaluation of ad expression: {name} \n")
+            print(f"Array with values: \n {expression_num.val} \n")
+            print(f"Jacobian with values: \n {expression_num.jac.A} \n")
 
     return expression_num.val, expression_num.jac
 
@@ -126,8 +127,8 @@ g = gb.grids_of_dimension(2)[0]
 d = gb.node_props(g)
 
 dim = gb.dim_max()
-z_cc = g.cell_centers[dim-1]
-z_fc = g.face_centers[dim-1]
+z_cc = g.cell_centers[dim - 1]
+z_fc = g.face_centers[dim - 1]
 
 #%% Physical parameters
 K_sat = 0.00922  # [cm/s] Saturated hydraulic conductivity
@@ -156,6 +157,7 @@ bottom = np.where(np.abs(fc[1]) < 1e-5)[0]
 left = np.where(np.abs(fc[0]) < 1e-5)[0]
 right = np.where(np.abs(fc[0] - Lx) < 1e-5)[0]
 
+
 def assign_data(g, d, param_key, sat_faces=[]):
 
     nc = g.num_cells
@@ -164,7 +166,9 @@ def assign_data(g, d, param_key, sat_faces=[]):
     bc_faces = g.get_boundary_faces()
     bc_type = np.array(bc_faces.size * ["neu"])  # bc faces are initially neu
     bc_type[np.in1d(bc_faces, top)] = "dir"
-    bc_type[np.in1d(bc_faces, sat_faces)] = "dir"  # we set seepage face as dirichlet boundaries
+    bc_type[
+        np.in1d(bc_faces, sat_faces)
+    ] = "dir"  # we set seepage face as dirichlet boundaries
     bc = pp.BoundaryCondition(g, faces=bc_faces, cond=bc_type)
 
     bc_values = np.zeros(g.num_faces)
@@ -190,6 +194,7 @@ def assign_data(g, d, param_key, sat_faces=[]):
     }
 
     pp.initialize_data(g, d, param_key, specified_parameters)
+
 
 #%% Set initial states
 cc = g.cell_centers
@@ -247,7 +252,9 @@ flux_ad = krw_faces_ad * (mpfa_ad.flux * h + mpfa_ad.bound_flux * bound_ad)
 source_ad = pp.ad.ParameterArray(param_key, "source", grids=grid_list)
 mass_ad = pp.ad.MassMatrixAd(param_key, grid_list)
 accum_active = mass_ad.mass * psi * C_ad(psi_m)
-accum_inactive = mass_ad.mass * (theta_ad(psi_m) - C_ad(psi_m) * psi_m - theta_ad(psi_n))
+accum_inactive = mass_ad.mass * (
+    theta_ad(psi_m) - C_ad(psi_m) * psi_m - theta_ad(psi_n)
+)
 accumulation_ad = accum_active + accum_inactive
 
 # Continuity equation
@@ -285,7 +292,9 @@ for n in range(1, num_time_steps + 1):
         residual_norm = 1
         rel_res = 1
         assign_data(g, d, param_key, sat_faces)
-        equation_manager.discretize(gb)  # we need to re-discretize the problem in the control loop
+        equation_manager.discretize(
+            gb
+        )  # we need to re-discretize the problem in the control loop
 
         # Solver loop
         while iteration_counter <= 100 and not (rel_res < 1e-5 or residual_norm < 1e-5):
@@ -317,12 +326,16 @@ for n in range(1, num_time_steps + 1):
             # end of iteration loop
 
         # Seepage control
-        trace_val, _ = eval_ad_expression(psi_trace, gb, dof_manager, print_expression=False)
+        trace_val, _ = eval_ad_expression(
+            psi_trace, gb, dof_manager, print_expression=False
+        )
         sat_faces = right[trace_val[right] >= 0]  # retrieve saturated faces
         if not list(sat_faces) == list(control_faces):  # avoid infinite loop
             control_faces = sat_faces  # make a copy of the sat faces to compare in the next iteration
             print(f"The faces {sat_faces} are saturated. Recomputing solution...")
-            d[pp.STATE][pp.ITERATE][pressure_var] = d[pp.STATE][pressure_var].copy() # go back to the previous state
+            d[pp.STATE][pp.ITERATE][pressure_var] = d[pp.STATE][
+                pressure_var
+            ].copy()  # go back to the previous state
         else:
             recompute_solution = False
         # end of control loop

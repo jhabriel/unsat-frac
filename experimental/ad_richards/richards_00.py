@@ -37,12 +37,12 @@ pp.plot_grid(g, plot_2d=True)
 #     pp.set_state(d)
 
 #%% Physical parameters
-theta_r = 0.1 # residual water content
-theta_s = 0.4 # saturated water content
-alpha_vG = 0.4 # van Genuchten parameter
-n_vG = 2 # van Genuchten parameter
-m_vG = 1 - 1 / n_vG # van Genuchten parameter
-K_sat = 1 # saturated hydraulic conductivity
+theta_r = 0.1  # residual water content
+theta_s = 0.4  # saturated water content
+alpha_vG = 0.4  # van Genuchten parameter
+n_vG = 2  # van Genuchten parameter
+m_vG = 1 - 1 / n_vG  # van Genuchten parameter
+K_sat = 1  # saturated hydraulic conductivity
 
 #%% Time levels
 dt = 0.1  # time step
@@ -55,7 +55,7 @@ x = sym.symbols("x", real=True)
 y = sym.symbols("y", real=True)
 t = sym.symbols("t", real=True)
 
-#exact_solution = "parabolic"  
+# exact_solution = "parabolic"
 exact_solution = "trigonometric"
 
 # Exact pressure head
@@ -108,7 +108,7 @@ f_ex = sym.lambdify((x, y, t), f_sym, "numpy")
 #%% Assign parameters
 keyword = "flow"
 pressure_variable = "psi"
-flux_variable = "mortar_flux" # NB! Currently unused
+flux_variable = "mortar_flux"  # NB! Currently unused
 
 discr = pp.Mpfa(keyword)
 
@@ -129,26 +129,26 @@ while tt + ttol < tf:
             # Set the values, specified as a vector of size g.num_faces
             bc_vals = np.zeros(g.num_faces)
             bc_vals[bc_faces] = psi_ex(
-                g.face_centers[0][bc_faces], 
-                g.face_centers[1][bc_faces], 
-                tt * np.ones_like(bc_faces)
-                )
+                g.face_centers[0][bc_faces],
+                g.face_centers[1][bc_faces],
+                tt * np.ones_like(bc_faces),
+            )
 
             # Integrated source terms are given by the exact solution
             integrated_source = g.cell_volumes * f_ex(
-                g.cell_centers[0], 
-                g.cell_centers[1], 
-                tt * np.ones_like(g.num_cells)
+                g.cell_centers[0], g.cell_centers[1], tt * np.ones_like(g.num_cells)
             )
-            
+
             # Create dictionary of parameters
             specified_parameters = {
-                "bc": bc, "bc_values": bc_vals, "source": integrated_source
-                }
+                "bc": bc,
+                "bc_values": bc_vals,
+                "source": integrated_source,
+            }
 
             # Initialize default data
             pp.initialize_default_data(g, d, keyword, specified_parameters)
-            
+
             # Declare primary variables and initialize states
             d[pp.PRIMARY_VARIABLES] = {pressure_variable: {"cells": 1}}
             d[pp.DISCRETIZATION] = {pressure_variable: {"diffusion": discr}}
@@ -167,30 +167,30 @@ while tt + ttol < tf:
         pp.initialize_data(mg, d, keyword, data)
 
     # Manager
-    dof_manager = pp.DofManager(gb) # new way
-    assembler = pp.Assembler(gb, dof_manager) # old way
-    assembler.discretize() # old way
-    manager = pp.ad.EquationManager(gb, dof_manager) # ad equation manager
+    dof_manager = pp.DofManager(gb)  # new way
+    assembler = pp.Assembler(gb, dof_manager)  # old way
+    assembler.discretize()  # old way
+    manager = pp.ad.EquationManager(gb, dof_manager)  # ad equation manager
 
     # Create grid and edge lists
     grid_list = [g for g, _ in gb]
-    edge_list = [e for e, _ in gb.edges()] # empty for now
+    edge_list = [e for e, _ in gb.edges()]  # empty for now
 
     # Discretize the problem using AD
-    node_discr = pp.ad.MpfaAd(keyword, grid_list) # matrix operators are here
+    node_discr = pp.ad.MpfaAd(keyword, grid_list)  # matrix operators are here
     bc_val = pp.ad.BoundaryCondition(keyword, grid_list)
     div = pp.ad.Divergence(grids=grid_list)
-    
+
     # Declare AD variables
     psi = manager.merge_variables([(g, pressure_variable) for g in grid_list])
 
     # Declare discrete equations in a mixed-dimensional way
     flux = node_discr.flux * psi + node_discr.bound_flux * bc_val
-    flow_eq = div * flux 
-    
+    flow_eq = div * flux
+
     flow_eq_ad = pp.ad.Expression(flow_eq, dof_manager, "flow on nodes")
     flow_eq_ad.discretize(gb)
-    
+
     # Print info
     print("Time:", np.round(tt + dt, decimals=1))
 

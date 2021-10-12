@@ -20,7 +20,7 @@ tsc = pp.TimeSteppingControl(
     iter_lowupp_factor=(1.3, 0.7),
     recomp_factor=0.5,
     recomp_max=10,
-    print_info=True
+    print_info=True,
 )
 
 
@@ -51,7 +51,7 @@ while tsc.time < tsc.time_final:
     tsc.time += tsc.dt
     iters = 0
     tol = 1e-12
-    error = 1e+8
+    error = 1e8
     u_m = u_n
 
     # Newton loop
@@ -85,7 +85,7 @@ if plot_fig:
     ax.plot(
         np.linspace(tsc.time_init, tsc.time_final, 1000),
         u_ex(u0, np.linspace(tsc.time_init, tsc.time_final, 1000)),
-        label="exact"
+        label="exact",
     )
     ax.plot(ts, us, marker=".", markersize=7, label="approximated")
     ax.set_xlabel("t")

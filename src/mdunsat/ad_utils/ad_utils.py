@@ -208,6 +208,7 @@ def eval_ad_operator(
 
     return expression_num.val, expression_num.jac
 
+
 # TODO: Check if this is still relevant
 def is_water_volume_negative(
     gb: pp.GridBucket, fracture_var: str, fracture_list: List[pp.Grid]
@@ -250,12 +251,13 @@ class ParameterScalar(Operator):
     broadcasting issues.
     """
 
-    def __init__(self,
-                 param_keyword: str,
-                 scalar_keyword: str,
-                 grid_list: Optional[List[pp.Grid]] = None,
-                 edge_list: Optional[List[Edge]] = None
-        ):
+    def __init__(
+        self,
+        param_keyword: str,
+        scalar_keyword: str,
+        grid_list: Optional[List[pp.Grid]] = None,
+        edge_list: Optional[List[Edge]] = None,
+    ):
         """Construct a wrapper for a scalar parameter for a grid list or an edge list
 
         Parameters:
@@ -273,7 +275,9 @@ class ParameterScalar(Operator):
         super().__init__()
 
         if (grid_list is None) and (edge_list is None):
-            raise ValueError("ParameterScalar needs at least a grid list or an edge list.")
+            raise ValueError(
+                "ParameterScalar needs at least a grid list or an edge list."
+            )
         if (grid_list is not None) and (edge_list is not None):
             raise ValueError("grid_list and edge_list cannot be passed simultaneously.")
         if grid_list is not None and len(grid_list) > 1:
@@ -318,7 +322,9 @@ class ParameterScalar(Operator):
         elif isinstance(val, int):
             return float(val)
         else:
-            raise TypeError(f"Expected 'int' or 'float'. Encountered {type(val)} instead.")
+            raise TypeError(
+                f"Expected 'int' or 'float'. Encountered {type(val)} instead."
+            )
 
 
 class ParameterUpdate:
@@ -614,6 +620,7 @@ class GhostProjection:
 
 # %% Fracture pressure-related classes
 
+
 class GhostFractureHydraulicHead:
     """
     Given the "real" fracture hydraulic head, compute the "ghost" fracture hydraulic head.
@@ -638,7 +645,9 @@ class GhostFractureHydraulicHead:
     def __repr__(self) -> str:
         return "Ghost fracture hydraulic head AD object."
 
-    def get_ghost_hyd_head(self, h_frac: Union[AdArray, NonAd]) -> Union[AdArray, NonAd]:
+    def get_ghost_hyd_head(
+        self, h_frac: Union[AdArray, NonAd]
+    ) -> Union[AdArray, NonAd]:
         """
         Computes the hydraulic head for a ghost fracture grid given the hydraulic head with
         dof = 1.
@@ -683,7 +692,6 @@ class GhostFractureHydraulicHead:
 
 
 class FractureVolume:
-
     def __init__(self, ghost_grid: pp.Grid, data: dict, param_key: str):
 
         self._g: pp.Grid = ghost_grid
@@ -717,7 +725,9 @@ class FractureVolume:
     def __repr__(self) -> str:
         return "Hydrostatic water fracture pressure Ad operator"
 
-    def fracture_volume(self, hydraulic_head: Union[AdArray, NonAd]) -> Union[AdArray, NonAd]:
+    def fracture_volume(
+        self, hydraulic_head: Union[AdArray, NonAd]
+    ) -> Union[AdArray, NonAd]:
 
         # Get grid volume
         grid_vol: float = self._g.cell_volumes.sum() * self._aperture
@@ -735,12 +745,12 @@ class FractureVolume:
         #  represented right now, it will not even be an pp.ad.Ad_array object
         if isinstance(hydraulic_head, pp.ad.Ad_array):
             water_volume = self._aperture * (hydraulic_head - self._datum)
-            #condition = hydraulic_head.val <= (grid_vol / self._aperture + self._datum)
+            # condition = hydraulic_head.val <= (grid_vol / self._aperture + self._datum)
             # Correct values for dry cells
             water_volume.val[water_volume.val >= grid_vol] = grid_vol
         else:
             water_volume = self._aperture * (hydraulic_head - self._datum)
-            #condition = hydraulic_head <= (grid_vol / self._aperture + self._datum)
+            # condition = hydraulic_head <= (grid_vol / self._aperture + self._datum)
             # Correct values for dry cells
             water_volume[water_volume >= grid_vol] = grid_vol
 
@@ -766,6 +776,7 @@ class FractureVolume:
                 return self._aperture
             else:
                 return 0
+
 
 class HydrostaticFracturePressure:
     """
@@ -1065,7 +1076,9 @@ class UpwindFluxBasedAd(ApplicableOperator):
 
         # Use Dirichlet boundary data where suitable.
         # Neglect Neumann boundaries since Neumann boundary data does not play a role.
-        if isinstance(inner_values, pp.ad.Ad_array) or isinstance(face_flux, pp.ad.Ad_array):
+        if isinstance(inner_values, pp.ad.Ad_array) or isinstance(
+            face_flux, pp.ad.Ad_array
+        ):
             raise TypeError("Object cannot be of the type pp.ad.Ad_array.")
         else:
             val_f = [cf_inner[i] * inner_values for i in range(0, 2)]

@@ -6,12 +6,15 @@ import scipy.sparse as sps
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import spy as sparsity
 
-plt.rcParams.update({
-    "text.usetex": False,
-    "font.family": "DejaVu Sans",
-    "font.serif": "Computer Modern Roman",
-    "font.sans-serif": "Computer Modern Sans Serif",
-    "font.cursive": "Zapf Chancery"})
+plt.rcParams.update(
+    {
+        "text.usetex": False,
+        "font.family": "DejaVu Sans",
+        "font.serif": "Computer Modern Roman",
+        "font.sans-serif": "Computer Modern Sans Serif",
+        "font.cursive": "Zapf Chancery",
+    }
+)
 
 from porepy.numerics.ad.grid_operators import DirBC
 from mdunsat.ad_utils.ad_utils import (
@@ -26,7 +29,7 @@ from mdunsat.ad_utils.ad_utils import (
     vanGenuchten,
     TimeSteppingControl,
     ParameterUpdate,
-    ParameterScalar
+    ParameterScalar,
 )
 
 # %% Make grid
@@ -37,7 +40,9 @@ connections = np.array([[0], [1]])
 domain = {"xmin": 0, "xmax": Lx, "ymin": 0, "ymax": Ly}
 target_h_bound = 5
 target_h_frac = 5
-network_2d = pp.fracture_importer.network_2d_from_csv("net_with_block.csv", domain=domain)
+network_2d = pp.fracture_importer.network_2d_from_csv(
+    "net_with_block.csv", domain=domain
+)
 mesh_args = {"mesh_size_frac": target_h_frac, "mesh_size_bound": target_h_bound}
 
 # Create a the fracture as a one-dimensional grid with one cell and length physdims
@@ -96,15 +101,15 @@ m_vG = 1 - 1 / n_vG  # van Genuchten parameter
 
 # %% Time parameters
 tsc = pp.TimeSteppingControl(
-    schedule=[0, 4*pp.HOUR],
+    schedule=[0, 4 * pp.HOUR],
     dt_init=1,
-    dt_min_max=(0.01, 0.25*pp.HOUR),
+    dt_min_max=(0.01, 0.25 * pp.HOUR),
     iter_max=70,
     iter_optimal_range=(30, 40),
     iter_lowupp_factor=(1.05, 0.95),
     recomp_factor=0.5,
     recomp_max=7,
-    print_info=True
+    print_info=True,
 )
 # time_stepping = TimeStepping(final_time=2.5 * pp.HOUR)
 final_time = 4 * pp.HOUR
@@ -187,10 +192,7 @@ for e, d in gb.edges():
     k_perp_val = K_sat / (2 * aperture)
     normal_diffusivity = k_perp_val * np.ones(mg.num_cells)
     is_conductive = np.zeros(mg.num_cells, dtype=np.int8)
-    data = {
-        "normal_diffusivity": normal_diffusivity,
-        "is_conductive": is_conductive
-    }
+    data = {"normal_diffusivity": normal_diffusivity, "is_conductive": is_conductive}
     pp.initialize_data(mg, d, param_key, data)
 
 # %% Set initial states
@@ -254,9 +256,9 @@ div_bulk = pp.ad.Divergence([g_bulk])
 bound_bulk = pp.ad.BoundaryCondition(param_key, grids=[g_bulk])
 dirbc_bulk = DirBC(bound_bulk, [g_bulk])
 mortar_proj = pp.ad.MortarProjections(gb=gb, grids=grid_list, edges=edge_list)
-mortar_proj_ghost = pp.ad.MortarProjections(gb=gb_ghost,
-                                            grids=ghost_grid_list,
-                                            edges=ghost_edge_list)
+mortar_proj_ghost = pp.ad.MortarProjections(
+    gb=gb_ghost, grids=ghost_grid_list, edges=ghost_edge_list
+)
 subdomain_proj_scalar = pp.ad.SubdomainProjections(grids=grid_list)
 bulk_cell_rest = subdomain_proj_scalar.cell_restriction(g_bulk)
 bulk_face_rest = subdomain_proj_scalar.face_restriction(g_bulk)
@@ -276,9 +278,12 @@ mpfa_bulk = pp.ad.MpfaAd(param_key, [g_bulk])
 # Obtain single phase flow to compute directionality of upwind scheme
 h_bulk_m = psi_bulk_m + z_cc
 flux1p_bulk = (
-        mpfa_bulk.flux * h_bulk_m
-        + mpfa_bulk.bound_flux * bound_bulk
-        + mpfa_bulk.bound_flux * bulk_face_rest * mortar_proj.mortar_to_primary_int * lmbda_m
+    mpfa_bulk.flux * h_bulk_m
+    + mpfa_bulk.bound_flux * bound_bulk
+    + mpfa_bulk.bound_flux
+    * bulk_face_rest
+    * mortar_proj.mortar_to_primary_int
+    * lmbda_m
 )
 
 # Upwinding of relative permeabilities
@@ -288,10 +293,13 @@ krw_faces_ad = upwind(krw_ad(psi_bulk_m), krw_ad(dirbc_bulk), flux1p_bulk)
 # Darcy fluxes
 h_bulk = psi_bulk + pp.ad.Array(z_cc)
 flux_bulk = (
-        krw_faces_ad * mpfa_bulk.flux * h_bulk
-        + krw_faces_ad * mpfa_bulk.bound_flux * bound_bulk
-        + krw_faces_ad * mpfa_bulk.bound_flux * bulk_face_rest
-        * mortar_proj.mortar_to_primary_int * lmbda
+    krw_faces_ad * mpfa_bulk.flux * h_bulk
+    + krw_faces_ad * mpfa_bulk.bound_flux * bound_bulk
+    + krw_faces_ad
+    * mpfa_bulk.bound_flux
+    * bulk_face_rest
+    * mortar_proj.mortar_to_primary_int
+    * lmbda
 )
 
 # Treatment of source and accumulation terms
@@ -309,16 +317,19 @@ if linearization == "newton":
 elif linearization == "modified_picard":
     accum_bulk_active = mass_bulk.mass * psi_bulk * C_ad(psi_bulk_m)
     accum_bulk_inactive = mass_bulk.mass * (
-            theta_ad(psi_bulk_m) - C_ad(psi_bulk_m) * psi_bulk_m - theta_ad(psi_bulk_n)
+        theta_ad(psi_bulk_m) - C_ad(psi_bulk_m) * psi_bulk_m - theta_ad(psi_bulk_n)
     )
 elif linearization == "l_scheme":
     L = 0.0025
     accum_bulk_active = L * mass_bulk.mass * psi_bulk
-    accum_bulk_inactive = mass_bulk.mass * (theta_ad(psi_bulk_m) - L * psi_bulk_m -
-                                            theta_ad(psi_bulk_n))
+    accum_bulk_inactive = mass_bulk.mass * (
+        theta_ad(psi_bulk_m) - L * psi_bulk_m - theta_ad(psi_bulk_n)
+    )
 else:
-    raise NotImplementedError("Linearization scheme not implemented. Use 'newton', "
-                              "'modified_picard', or 'l_scheme'.")
+    raise NotImplementedError(
+        "Linearization scheme not implemented. Use 'newton', "
+        "'modified_picard', or 'l_scheme'."
+    )
 
 accumulation_bulk = accum_bulk_active + accum_bulk_inactive
 conserv_bulk_eq = accumulation_bulk + dt_ad * div_bulk * flux_bulk - dt_ad * source_bulk
@@ -330,9 +341,12 @@ conserv_bulk_num = conserv_bulk_eq.evaluate(dof_manager=dof_manager)
 # print(f'>> Conservation bulk: \n {conserv_bulk_num.jac.A} \n')
 
 # %% Declare equations for the fracture
-hydrostatic = HydrostaticFracturePressure(ghost_grid=g_frac_ghost, data=d_frac,
-                                          param_key=param_key)
-psi_fracture = pp.ad.Function(hydrostatic.get_pressure_head, name="hydrostatic pressure head")
+hydrostatic = HydrostaticFracturePressure(
+    ghost_grid=g_frac_ghost, data=d_frac, param_key=param_key
+)
+psi_fracture = pp.ad.Function(
+    hydrostatic.get_pressure_head, name="hydrostatic pressure head"
+)
 
 # Conservation equation in the fracture: This is a water volume balance
 aperture_ad = ParameterScalar(param_key, "aperture", grid=g_frac)
@@ -350,35 +364,36 @@ robin = pp.ad.RobinCouplingAd(param_key, edge_list)
 
 # Projected bulk pressure traces onto the mortar grid
 mortar_trace_psi_bulk = (
-        mortar_proj.primary_to_mortar_avg
-        * bulk_face_prol
-        * mpfa_bulk.bound_pressure_cell
-        * psi_bulk
-        + mortar_proj.primary_to_mortar_avg
-        * bulk_face_prol
-        * mpfa_bulk.bound_pressure_face
-        * bulk_face_rest
-        * mortar_proj.mortar_to_primary_int
-        * lmbda
+    mortar_proj.primary_to_mortar_avg
+    * bulk_face_prol
+    * mpfa_bulk.bound_pressure_cell
+    * psi_bulk
+    + mortar_proj.primary_to_mortar_avg
+    * bulk_face_prol
+    * mpfa_bulk.bound_pressure_face
+    * bulk_face_rest
+    * mortar_proj.mortar_to_primary_int
+    * lmbda
 )
 
 mortar_trace_psi_bulk_m = (
-        mortar_proj.primary_to_mortar_avg *
-        bulk_face_prol
-        * mpfa_bulk.bound_pressure_cell
-        * psi_bulk_m
-        + mortar_proj.primary_to_mortar_avg
-        * bulk_face_prol
-        * mpfa_bulk.bound_pressure_face
-        * bulk_face_rest
-        * mortar_proj.mortar_to_primary_int
-        * lmbda_m
+    mortar_proj.primary_to_mortar_avg
+    * bulk_face_prol
+    * mpfa_bulk.bound_pressure_cell
+    * psi_bulk_m
+    + mortar_proj.primary_to_mortar_avg
+    * bulk_face_prol
+    * mpfa_bulk.bound_pressure_face
+    * bulk_face_rest
+    * mortar_proj.mortar_to_primary_int
+    * lmbda_m
 )
 
 # Projected fracture pressure (from the ghost grid) onto the mortar grid
 ghost_proj = GhostProjection(gb_ghost=gb_ghost, g_fracture=g_frac_ghost)
-frac_to_mortar = pp.ad.Function(ghost_proj.secondary_to_mortar,
-                                name="Secondary to mortar projection")
+frac_to_mortar = pp.ad.Function(
+    ghost_proj.secondary_to_mortar, name="Secondary to mortar projection"
+)
 mortar_psi_frac = frac_to_mortar(psi_fracture(vol_frac))
 
 # Array parameter that keeps track of conductive (1) and blocking (0) mortar cells
@@ -386,7 +401,9 @@ mortar_psi_frac = frac_to_mortar(psi_fracture(vol_frac))
 is_conductive = pp.ad.ParameterArray(param_key, "is_conductive", edges=edge_list)
 
 # Interface flux
-mortar_flux = robin.mortar_scaling * (mortar_trace_psi_bulk - mortar_psi_frac) * is_conductive
+mortar_flux = (
+    robin.mortar_scaling * (mortar_trace_psi_bulk - mortar_psi_frac) * is_conductive
+)
 interface_flux_eq = mortar_flux + robin.mortar_discr * lmbda
 
 # interface_flux_eval = pp.ad.Expression(interface_flux_eq, dof_manager)
@@ -443,8 +460,18 @@ while time < final_time:
             else:
                 initial_residual_norm = max(residual_norm, initial_residual_norm)
             rel_res = residual_norm / initial_residual_norm
-            print("time", time, "iter", iteration_counter, "res", residual_norm, "rel_res",
-                  rel_res, "dt", dt)
+            print(
+                "time",
+                time,
+                "iter",
+                iteration_counter,
+                "res",
+                residual_norm,
+                "rel_res",
+                rel_res,
+                "dt",
+                dt,
+            )
 
             # Prepare next iteration
             iteration_counter += 1
@@ -459,12 +486,17 @@ while time < final_time:
             dt /= 2
             param_update.update_time_step(dt)
             time += dt
-            print(f"Solution did not converge. Deacresing time step and recomputing solution")
-            set_iterate_to_state(gb, bulk_var, fracture_var,
-                                 mortar_var)  # set iterate to state
+            print(
+                f"Solution did not converge. Deacresing time step and recomputing solution"
+            )
+            set_iterate_to_state(
+                gb, bulk_var, fracture_var, mortar_var
+            )  # set iterate to state
             continue  # go back to control loop
         elif recompute_div_attempts >= 10:
-            msg = f"Solution diverges after {recompute_div_attempts} recomputing attempts"
+            msg = (
+                f"Solution diverges after {recompute_div_attempts} recomputing attempts"
+            )
             raise AssertionError(msg)
 
         # Recompute solution if negative water volume is encountered
@@ -475,12 +507,17 @@ while time < final_time:
             dt /= 2
             param_update.update_time_step(dt)
             time += dt
-            print(f"Encountered negative volume. Reducing time step and recomputing solution.")
-            set_iterate_to_state(gb, bulk_var, fracture_var,
-                                 mortar_var)  # set iterate to state
+            print(
+                f"Encountered negative volume. Reducing time step and recomputing solution."
+            )
+            set_iterate_to_state(
+                gb, bulk_var, fracture_var, mortar_var
+            )  # set iterate to state
             continue  # go back to control loop
         elif recompute_vol_attempts >= 10:
-            msg = f"Solution diverges after {recompute_vol_attempts} recomputing attempts"
+            msg = (
+                f"Solution diverges after {recompute_vol_attempts} recomputing attempts"
+            )
             raise AssertionError(msg)
 
         # Recompute solution is capillary barrier is overcome
@@ -490,9 +527,11 @@ while time < final_time:
         if control_faces.sum() == 0 and is_mortar_conductive.sum() > 0:
             control_faces = is_mortar_conductive  # make a copy of the sat faces to compare in the next iteration
             print(
-                f"The faces {np.where(is_mortar_conductive)[0]} are saturated. Solution will be recomputed.")
-            set_iterate_to_state(gb, bulk_var, fracture_var,
-                                 mortar_var)  # return to previous state
+                f"The faces {np.where(is_mortar_conductive)[0]} are saturated. Solution will be recomputed."
+            )
+            set_iterate_to_state(
+                gb, bulk_var, fracture_var, mortar_var
+            )  # return to previous state
         else:
             recompute_solution = False
         # end of control loop
@@ -517,8 +556,14 @@ while time < final_time:
 
     # Export to ParaView
     pp.set_state(data=d_bulk_ghost, state={"pressure_head": d_bulk[pp.STATE][bulk_var]})
-    pp.set_state(data=d_frac_ghost, state={"pressure_head": hydrostatic.get_pressure_head(
-        d_frac[pp.STATE][fracture_var])})
+    pp.set_state(
+        data=d_frac_ghost,
+        state={
+            "pressure_head": hydrostatic.get_pressure_head(
+                d_frac[pp.STATE][fracture_var]
+            )
+        },
+    )
     pp.set_state(data=d_edge, state={"is_sat": is_mortar_conductive})
     if (np.mod(len(times), 4) == 0) or (time == final_time):
         export_counter += 1

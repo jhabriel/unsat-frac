@@ -25,7 +25,7 @@ from mdunsat.ad_utils.ad_utils import (
 )
 
 #%% Model specifications
-avg_method = "upwind" # artihmetic
+avg_method = "upwind"  # artihmetic
 
 #%% Make grid
 vert_frac = np.array([[50, 50], [0, 100]])
@@ -37,14 +37,14 @@ exporter.write_vtu()
 
 dim_max = gb.dim_max()
 g_bulk = gb.grids_of_dimension(dim_max)[0]
-g_frac = gb.grids_of_dimension(dim_max-1)[0]
+g_frac = gb.grids_of_dimension(dim_max - 1)[0]
 
 d_bulk = gb.node_props(g_bulk)
-d_frac = gb.node_props(g_frac)  
+d_frac = gb.node_props(g_frac)
 d_edge = gb.edge_props((g_bulk, g_frac))
 
-z_cc = g_bulk.cell_centers[dim_max-1]
-z_fc = g_bulk.face_centers[dim_max-1]
+z_cc = g_bulk.cell_centers[dim_max - 1]
+z_fc = g_bulk.face_centers[dim_max - 1]
 
 #%% Physical parameters
 K_sat = 0.00922  # [cm/s] Saturated hydraulic conductivity
@@ -75,31 +75,31 @@ for _, d in gb.edges():
 def assign_data(param_key, time):
 
     # Assign node parameters
-    for g, d in gb:    
-        
+    for g, d in gb:
+
         # Parameters for the bulk
-        if g.dim == gb.dim_max():        
+        if g.dim == gb.dim_max():
             nc = g.num_cells
             fc = g.face_centers
             Lx = g.bounding_box()[1][0]
-      
+
             perm = pp.SecondOrderTensor(K_sat * np.ones(nc))
 
             left = np.where(np.abs(fc[0]) < 1e-5)[0]
             right = np.where(np.abs(fc[0] - Lx) < 1e-5)[0]
-          
+
             bc_faces = g.get_boundary_faces()
             bc_type = np.array(bc_faces.size * ["neu"])
             bc_type[np.in1d(bc_faces, left)] = "dir"
             bc = pp.BoundaryCondition(g, faces=bc_faces, cond=bc_type)
-                            
+
             bc_values = np.zeros(g.num_faces)
             bc_values[left] = -75
             # Add gravity contribution to Dirichlet faces
-            #bc_values[bc.is_dir] += z_fc[bc.is_dir]
-            
+            # bc_values[bc.is_dir] += z_fc[bc.is_dir]
+
             source_term = np.zeros(nc)
-        
+
             specified_parameters = {
                 "second_order_tensor": perm,
                 "bc": bc,
@@ -112,28 +112,30 @@ def assign_data(param_key, time):
                 "n_vG": n_vG,
                 "m_vG": m_vG,
             }
-            
+
             pp.initialize_data(g, d, param_key, specified_parameters)
-        
+
         # Parameters for the fracture
         else:
             perm = pp.SecondOrderTensor(K_sat * np.ones(g.num_cells))
             # No-flow Neumann conditions
             bc = pp.BoundaryCondition(g)
             bc_val = np.zeros(g.num_faces)
-            specified_data = {'second_order_tensor': perm,
-                             'bc': bc,
-                             'bc_values': bc_val}
+            specified_data = {
+                "second_order_tensor": perm,
+                "bc": bc,
+                "bc_values": bc_val,
+            }
             d = pp.initialize_data(g, d, param_key, specified_data)
 
     # Assign interface parameters
     for e, d in gb.edges():
-        
+
         data = {"normal_diffusivity": K_sat}
         mg = d["mortar_grid"]
         pp.initialize_data(mg, d, param_key, data)
 
-    
+
 #%% Set initial states
 for g, d in gb:
     pp.set_state(d)
@@ -195,11 +197,13 @@ if avg_method == "arithmetic":
 elif avg_method == "upwind":
     upwind = UpwindFluxBasedAd(g_bulk, d_bulk, param_key)
     flux1p_bulk = (
-    mpfa_bulk.flux * bulk_cell_proj * psi_m
-    + mpfa_bulk.bound_flux * bound_bulk
-    #+ mpfa_bulk.bound_flux * bulk_face_rest * mortar_proj.mortar_to_primary_int * lmbda_m
+        mpfa_bulk.flux * bulk_cell_proj * psi_m
+        + mpfa_bulk.bound_flux * bound_bulk
+        # + mpfa_bulk.bound_flux * bulk_face_rest * mortar_proj.mortar_to_primary_int * lmbda_m
     )
-    krw_faces_ad = upwind(krw_ad(bulk_cell_proj * psi_m), krw_ad(dirbc_bulk), flux1p_bulk)
+    krw_faces_ad = upwind(
+        krw_ad(bulk_cell_proj * psi_m), krw_ad(dirbc_bulk), flux1p_bulk
+    )
 else:
     raise ValueError("Averaging method not implemented")
 
@@ -207,8 +211,8 @@ else:
 flux_bulk = (
     krw_faces_ad * mpfa_bulk.flux * bulk_cell_proj * psi
     + krw_faces_ad * mpfa_bulk.bound_flux * bound_bulk
-    #+ krw_faces_ad * mpfa_bulk.bound_flux * bulk_face_rest * mortar_proj.mortar_to_primary_int * lmbda
-    )
+    # + krw_faces_ad * mpfa_bulk.bound_flux * bulk_face_rest * mortar_proj.mortar_to_primary_int * lmbda
+)
 
 # Source and accumulation terms (Linearization: Modified Picard iteration)
 # Note: The expression containing the active ad variable (psi) must
@@ -221,7 +225,7 @@ accum_bulk_inactive = mass_bulk.mass * (
     theta_ad(bulk_cell_proj * psi_m)
     - C_ad(bulk_cell_proj * psi_m) * (bulk_cell_proj * psi_m)
     - theta_ad(bulk_cell_proj * psi_n)
-    )
+)
 accumulation_bulk = accum_bulk_active + accum_bulk_inactive
 sources_from_mortar = mortar_proj.mortar_to_secondary_int * lmbda
 
@@ -229,7 +233,7 @@ conserv_bulk_eq = accumulation_bulk + dt * div_bulk * flux_bulk - dt * source_bu
 conserv_bulk_eval = pp.ad.Expression(conserv_bulk_eq, dof_manager)
 conserv_bulk_eval.discretize(gb)
 conserv_bulk_num = conserv_bulk_eval.to_ad(gb)
-print(f'>> Conservation bulk: \n {conserv_bulk_num.jac.A} \n')
+print(f">> Conservation bulk: \n {conserv_bulk_num.jac.A} \n")
 
 # #%% Declare equations for the fracture
 # conserv_frac_eq = (
@@ -244,10 +248,10 @@ print(f'>> Conservation bulk: \n {conserv_bulk_num.jac.A} \n')
 # pressure_trace_from_high = (
 #     mortar_proj.primary_to_mortar_avg * mpfa_global.bound_pressure_cell * psi
 #     + mortar_proj.primary_to_mortar_avg * mpfa_global.bound_pressure_face * mortar_proj.mortar_to_primary_int * lmbda
-#     )    
+#     )
 # robin = pp.ad.RobinCouplingAd(kw, edge_list)
 
-# interface_flux_eq = ( 
+# interface_flux_eq = (
 #     1e-30 * robin.mortar_scaling * (pressure_trace_from_high - mortar_proj.secondary_to_mortar_avg * psi)
 #     + robin.mortar_discr * lmbda
 #     )
@@ -276,9 +280,9 @@ for n in range(1, num_time_steps + 1):
     residual_norm = 1
     rel_res = 1
     time += dt
-    
+
     print("Current time: ", np.round(time, decimals=1))
-    
+
     while iteration_counter <= 30 and not (rel_res < 1e-6 or residual_norm < 1e-6):
 
         conserv_bulk_eval = pp.ad.Expression(conserv_bulk_eq, dof_manager)
@@ -287,14 +291,14 @@ for n in range(1, num_time_steps + 1):
 
         b = -conserv_bulk_num.val
         A = conserv_bulk_num.jac
-        y = spla.spsolve(A[:g_bulk.num_cells, :g_bulk.num_cells], b)
+        y = spla.spsolve(A[: g_bulk.num_cells, : g_bulk.num_cells], b)
         d_bulk[pp.STATE][pp.ITERATE][pressure_var] += y
 
         # # Solve for pressure increment and update pressure
         # A, b = equation_manager.assemble_matrix_rhs()
         # solution = spla.spsolve(A, b)
         # assert False
-        
+
         # # Distribute variable to local data dictionaries
         # dof_manager.distribute_variable(solution, additive=True)
 
@@ -313,21 +317,19 @@ for n in range(1, num_time_steps + 1):
             "rel res",
             residual_norm / initial_residual_norm,
         )
-   
+
         # Prepare next iteration
         iteration_counter += 1
         total_iteration_counter += 1
-        
+
     print()
-         
+
     # Update next time step solution
     d_bulk[pp.STATE][pressure_var] = d_bulk[pp.STATE][pp.ITERATE][pressure_var].copy()
-    d_bulk[pp.STATE]["S_eff"] = swrc.effective_saturation(d_bulk[pp.STATE][pressure_var])
-    
+    d_bulk[pp.STATE]["S_eff"] = swrc.effective_saturation(
+        d_bulk[pp.STATE][pressure_var]
+    )
+
     # Export to PARAVIEW
     if np.mod(n, 10) == 0:
-        exporter.write_vtu([pressure_var, "S_eff"], time_step=n) 
-        
-        
-        
-        
+        exporter.write_vtu([pressure_var, "S_eff"], time_step=n)

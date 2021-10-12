@@ -71,7 +71,7 @@ y = sym.symbols("y", real=True)
 t = sym.symbols("t", real=True)
 
 # Exact pressure distribution
-#exact_sol = "parabolic"
+# exact_sol = "parabolic"
 exact_sol = "trigonometric"
 if exact_sol == "parabolic":
     p_sym = t * (1 - x) * x * (1 - y) * y - 1
@@ -133,7 +133,7 @@ def grid_cart_struct(nx=[5, 5], L=[1.0, 1.0], plot_grid=False):
     return gb
 
 
-#gb = grid_tri_unstruct(mesh_size=0.1, plot_grid=False)
+# gb = grid_tri_unstruct(mesh_size=0.1, plot_grid=False)
 n = 40
 gb = grid_cart_struct(nx=[n, n], plot_grid=False)
 g = gb.grids_of_dimension(2)[0]
@@ -144,6 +144,7 @@ d = gb.node_props(g)
 param_key = "flow"
 pressure_var = "pressure_head"
 d[pp.PRIMARY_VARIABLES] = {pressure_var: {"cells": 1}}
+
 
 def assign_parameters(g, d, param_key, time):
 
@@ -157,9 +158,7 @@ def assign_parameters(g, d, param_key, time):
     bc_val = np.zeros(g.num_faces)
     xf = g.face_centers[0]
     yf = g.face_centers[1]
-    bc_val[bc_faces] = p_ex(
-        xf[bc_faces], yf[bc_faces], time * np.ones_like(bc_faces)
-    )
+    bc_val[bc_faces] = p_ex(xf[bc_faces], yf[bc_faces], time * np.ones_like(bc_faces))
 
     # (Integrated) source terms
     xc = g.cell_centers[0]
@@ -179,7 +178,7 @@ def assign_parameters(g, d, param_key, time):
         "n_vG": n_vG,
         "m_vG": m_vG,
     }
-    
+
     pp.initialize_data(g, d, param_key, specified_parameters)
 
 
@@ -217,7 +216,7 @@ flux_1p_ad = mpfa_ad.flux * psi.previous_iteration() + mpfa_ad.bound_flux * boun
 
 # Face-averaging of relative permeabilities
 avg_method = "arithmetic"
-#avg_method = "upwind"
+# avg_method = "upwind"
 if avg_method == "arithmetic":
     arithmetic_avg = ArithmeticAverageAd(g, d, param_key)
     krw_faces_ad = arithmetic_avg(
