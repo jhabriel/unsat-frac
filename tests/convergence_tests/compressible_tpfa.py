@@ -228,10 +228,10 @@ advective_flux_ad =  darcy_flux * rho_faces_ad
 
 # # Face-averaging of densities
 # if avg_method == "arithmetic":
-#     arithmetic_avg = ArithmeticAverageAd(g, d, param_key)
+#     arithmetic_avg = ArithmeticAverageAd(g, d, kw)
 #     rho_faces_ad = arithmetic_avg(rho_ad(p_m), rho_ad(dir_bound_ad))
 # elif avg_method == "upwind":
-#     upwind = UpwindFluxBasedAd(g, d, param_key)
+#     upwind = UpwindFluxBasedAd(g, d, kw)
 #     rho_faces_ad = upwind(rho_ad(p_m), rho_ad(dir_bound_ad), flux_1p_ad)
 # else:
 #     raise ValueError("Averaging method not implemented")
