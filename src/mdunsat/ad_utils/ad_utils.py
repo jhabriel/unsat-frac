@@ -3,50 +3,132 @@ Collection of utility AD operators and functions
 Author: @jv
 """
 
-#%% Importing modules
+# %% Importing modules
 import porepy as pp
 import numpy as np
 import scipy.sparse as sps
 
 from porepy.numerics.ad.operators import Operator, ApplicableOperator
 from porepy.numerics.ad.functions import heaviside
-from porepy.numerics.ad.forward_mode import Ad_array
-from typing import Callable, Optional, Tuple, List, Any, Union
+
+# from porepy.numerics.ad.forward_mode import Ad_array
+from typing import Callable, Optional, Tuple, List, Any, Union, NewType, Literal
+
+# Typing abbreviations
+Scalar = Union[int, float]
+AdArray = pp.ad.Ad_array
+NonAd = Union[Scalar, np.ndarray]
+Edge = Tuple[pp.Grid, pp.Grid]
 
 
+def get_conductive_mortars(
+    gb: pp.GridBucket,
+    dof_manager: pp.DofManager,
+    param_key: str,
+    proj_tr_hb: pp.ad.Operator,
+    proj_hf: pp.ad.Operator,
+    edge_list: List[Edge],
+) -> np.ndarray:
+    """
+    Determines the conductivity state of a mortar cell, i.e., conductive (1) or blocking (0).
+
+    Parameters:
+        gb (GridBucket): Mixed-dimensional grid bucket
+        dof_manager (DofManager): Degree of freedom manager for the coupled problem.
+        param_key (str): Parameter keyword for accesing data dictionary, i.e., flow.
+        proj_tr_hb (pp.ad.Operator): Projected hydraulic head traces from the primary grid
+            onto the mortar grids.
+        proj_hf (pp.ad.Operator): Projected hydraulic head from the secondary grid onto the
+            mortar grids.
+        edge_list (List of Edges): List of edges. It is critical the ordering of the edges
+            to be respected.
+
+    Returns:
+        is_conductive (np.ndarray of bools): True if is conductive, False if is blocking.
+
+    """
+    pressure_threshold = 0  # TODO: This has to be retrieve from some data dictionary
+    is_conductive = np.zeros(gb.num_mortar_cells(), dtype=np.int8)
+    zeta = pp.ad.ParameterArray(param_key, "elevation", edges=edge_list).parse(gb)
+
+    # Evaluate operators
+    proj_tr_hb.discretize(gb=gb)
+    tr_hb = proj_tr_hb.evaluate(dof_manager)
+
+    proj_hf.discretize(gb=gb)
+    hf = proj_hf.evaluate(dof_manager)
+
+    # TODO: This loop can be optimized... I'm just too lazy to vectorise it <3
+    # If pressure in the fracture is greater than the pressure threshold, promote the mortar
+    # cell to be conductive. This is the first condition that we have to check. Otherwise,
+    # check if the pressure trace is greater (or equal) than the pressure threshold,
+    # if that is the case also promote that cell to conductive.
+    for mortar_cell in range(0, tr_hb.val.size):
+        if hf.val[mortar_cell] > (pressure_threshold + zeta[mortar_cell]):
+            is_conductive[mortar_cell] = 1
+        else:
+            if tr_hb.val[mortar_cell] >= (pressure_threshold + zeta[mortar_cell]):
+                is_conductive[mortar_cell] = 1
+
+    return is_conductive
+
+
+# CONSIDER IT DEPRECATED
 def get_conductive_mortar_cells(
-        gb: pp.GridBucket,
-        dof_manager: pp.DofManager,
-        bulk_pressure_trace: pp.ad.Operator,
-        fracture_pressure: pp.ad.Operator
-        ) -> np.ndarray:
-
+    gb: pp.GridBucket,
+    dof_manager: pp.DofManager,
+    bulk_pressure_trace: pp.ad.Operator,
+    fracture_pressure: pp.ad.Operator,
+) -> np.ndarray:
     pressure_threshold = 0  # TODO: This has to be an input, eventually
     num_mortar_cells = gb.num_mortar_cells()
     is_mortar_cell_conductive = np.zeros(num_mortar_cells, dtype=np.int8)
 
-    # Evaluate ad operators
-    trace_p, _ = eval_ad_operator(bulk_pressure_trace, gb, dof_manager, print_expression=False)
-    frac_p, _ = eval_ad_operator(fracture_pressure, gb, dof_manager, print_expression=False)
+    # Evaluate operators
+    bulk_pressure_trace.discretize(gb=gb)
+    trace_p = bulk_pressure_trace.evaluate(dof_manager=dof_manager)
+    fracture_pressure.discretize(gb=gb)
+    frac_p = fracture_pressure.evaluate(dof_manager=dof_manager)
 
     # TODO: This loop has to be optimized
-    # If pressure in the fracture is greater than the pressure threshold,
-    # promote the mortar cell to be conductive. This is the first condition
-    # that we have to check. Otherwise, check if the pressure trace is
-    # greater (or equal) than the pressure threshold, if that is the case
-    # also promote that cell to conductive.
-    for cell in range(0, trace_p.size):
-        if frac_p[cell] > pressure_threshold:
+    # If pressure in the fracture is greater than the pressure threshold, promote the mortar
+    # cell to be conductive. This is the first condition that we have to check. Otherwise,
+    # check if the pressure trace is greater (or equal) than the pressure threshold,
+    # if that is the case also promote that cell to conductive.
+    for cell in range(0, trace_p.val.size):
+        if frac_p.val[cell] > pressure_threshold:
             is_mortar_cell_conductive[cell] = 1
         else:
-            if trace_p[cell] >= pressure_threshold:
+            if trace_p.val[cell] >= pressure_threshold:
                 is_mortar_cell_conductive[cell] = 1
 
     return is_mortar_cell_conductive
 
 
-def set_iterate_to_state(gb, bulk_var, fracture_var, mortar_var):
+def set_iterate_as_state(gb: pp.GridBucket, node_var: str, edge_var: str):
+    """
+    (Re)sets the iterate as the state in all nodes and edges of the grid bucket. This
+    function is particularly useful for "going back" to the previous state after recomputing
+    a solution.
 
+    Parameters:
+        gb (Grid Bucket): Mixed-dimensional grid bucket
+        node_var (str): Keyword for the node variable, i.e., "hydraulic_head"
+        edge_var (str): Keyword for the edge variable, i.e., "mortar_flux"
+
+    """
+
+    # Loop through all nodes of the gb
+    for _, d in gb:
+        pp.set_iterate(data=d, iterate={node_var: d[pp.STATE][node_var]})
+
+    # Loop through all the edges of the gb
+    for _, d in gb.edges():
+        pp.set_iterate(data=d, iterate={edge_var: d[pp.STATE][edge_var]})
+
+
+# CONSIDER IT DEPRECATED
+def set_iterate_to_state(gb, bulk_var, fracture_var, mortar_var):
     for g, d in gb:
         if g.dim == gb.dim_max():
             pp.set_iterate(data=d, iterate={bulk_var: d[pp.STATE][bulk_var]})
@@ -57,12 +139,14 @@ def set_iterate_to_state(gb, bulk_var, fracture_var, mortar_var):
         pp.set_iterate(data=d, iterate={mortar_var: d[pp.STATE][mortar_var]})
 
 
+# CONSIDER IT DEPRECATED
 def eval_ad_operator(
-        ad_expression: pp.ad.Operator,
-        grid_bucket: pp.GridBucket,
-        dof_manager: pp.DofManager,
-        name: str = None,
-        print_expression: bool = False) -> tuple:
+    ad_expression: pp.ad.Operator,
+    grid_bucket: pp.GridBucket,
+    dof_manager: pp.DofManager,
+    name: str = None,
+    print_expression: bool = False,
+) -> tuple:
     """
     Utility function for rapid evaluation of ad expressions.
 
@@ -114,21 +198,20 @@ def eval_ad_operator(
     # Print if necessary: Meant only for small arrays and matrices, a.k.a. debugging.
     if print_expression:
         if name is None:
-            print('Evaluation of ad expression: \n')
-            print(f'Array with values: \n {expression_num.val} \n')
-            print(f'Jacobian with values: \n {expression_num.jac.A} \n')
+            print("Evaluation of ad expression: \n")
+            print(f"Array with values: \n {expression_num.val} \n")
+            print(f"Jacobian with values: \n {expression_num.jac.A} \n")
         else:
-            print(f'Evaluation of ad expression: {name} \n')
-            print(f'Array with values: \n {expression_num.val} \n')
-            print(f'Jacobian with values: \n {expression_num.jac.A} \n')
+            print(f"Evaluation of ad expression: {name} \n")
+            print(f"Array with values: \n {expression_num.val} \n")
+            print(f"Jacobian with values: \n {expression_num.jac.A} \n")
 
     return expression_num.val, expression_num.jac
 
-
+# TODO: Check if this is still relevant
 def is_water_volume_negative(
-        gb: pp.GridBucket,
-        fracture_var: str,
-        fracture_list: List[pp.Grid]) -> bool:
+    gb: pp.GridBucket, fracture_var: str, fracture_list: List[pp.Grid]
+) -> bool:
     """
     Checks wheter negative water volume in the fractures is encountered
 
@@ -152,7 +235,7 @@ def is_water_volume_negative(
     is_negative = False
     for g in fracture_list:
         d = gb.node_props(g)
-        if np.any(d[pp.STATE][pp.ITERATE][fracture_var] < 0):
+        if np.any(d[pp.STATE][pp.ITERATE][fracture_var] < 10):
             is_negative = True
 
     return is_negative
@@ -162,44 +245,47 @@ class ParameterScalar(Operator):
     """Extracts a scalar from the parameter dictionary for a given grid or edge
 
     Can be used to change scalar parameters (e.g., time_step) during a simulation
-    without having to redefine the equations. This class is needed since ParameterArray
-    returns an ndarray in the parsing process, which creates dimensionality issues.
+    without having to redefine the equations. This class is necessary since ParameterArray
+    returns an ndarray in the parsing process, which creates dimensionality errors due to
+    broadcasting issues.
     """
 
-    def __init__(
-            self,
-            param_keyword: str,
-            scalar_keyword: str,
-            grid: Optional[pp.Grid] = None,
-            edge: Optional[Tuple[pp.Grid, pp.Grid]] = None
-    ):
-        """Construct a wrapper for a scalar parameter for a grid or edge
+    def __init__(self,
+                 param_keyword: str,
+                 scalar_keyword: str,
+                 grid_list: Optional[List[pp.Grid]] = None,
+                 edge_list: Optional[List[Edge]] = None
+        ):
+        """Construct a wrapper for a scalar parameter for a grid list or an edge list
 
         Parameters:
-
             param_keyword (str): Keyword that should be used to access the data dictionary
                 to get the relevant parameter dictionary.
-            grid (pp.Grid): Grid.
-            edge (Tuple of pp.Grid): Tuple of grids defining the edge.
+            grid_list (List of pp.Grid): List containing the grid from which the parameter
+                scalar should be retrieved. If len(grid_list) > 1, an error will be raised.
+            edge_list (Tuple of pp.Grid): List containing the edge from which the parameter
+                scalar should be retrieved. If len(edge_list) > 1, an error will be raised.
 
         Example:
-            To get the time step for a given grid, initialize with param_keyword='flow',
-            and scalar_keyword='time_step'.
-
+            dt_ad = ParameterScalar("flow", "time_step", grid_list=[g])
         """
 
-        # Check whether a grid or an edge is passed
-        if (grid is None) and (edge is None):
-            raise ValueError("ParameterScalar needs at least a grid or an edge")
+        super().__init__()
 
-        # Only a grid, or an edge can be passed
-        if (grid is not None) and (edge is not None):
-            raise ValueError("Too many inputs. Expected one grid OR one edge.")
+        if (grid_list is None) and (edge_list is None):
+            raise ValueError("ParameterScalar needs at least a grid list or an edge list.")
+        if (grid_list is not None) and (edge_list is not None):
+            raise ValueError("grid_list and edge_list cannot be passed simultaneously.")
+        if grid_list is not None and len(grid_list) > 1:
+            raise ValueError("Expected a grid list with only one grid.")
+        if edge_list is not None and len(edge_list) > 1:
+            raise ValueError("Expected an edge list with only one edge.")
 
         self.param_keyword = param_keyword
         self.scalar_keyword = scalar_keyword
-        self._g = grid
-        self._e = edge
+        self._grid_list = grid_list
+        self._edge_list = edge_list
+
         self._set_tree()
 
     def __repr__(self) -> str:
@@ -219,21 +305,20 @@ class ParameterScalar(Operator):
             float: Value of the scalar.
 
         """
-        if self._g is not None:
-            data = gb.node_props(self._g)
+        if self._grid_list is not None:
+            data = gb.node_props(self._grid_list[0])
             val = data[pp.PARAMETERS][self.param_keyword][self.scalar_keyword]
-            if isinstance(val, float) or isinstance(val, int):
-                return float(val)
-            else:
-                raise TypeError("ParameterScalar expects scalar to be int or float.")
+        else:
+            data = gb.edge_props(self._edge_list[0])
+            val = data[pp.PARAMETERS][self.param_keyword][self.scalar_keyword]
 
-        if self._e is not None:
-            data = gb.edge_props(self._e)
-            val = data[pp.PARAMETERS][self.param_keyword][self.scalar_keyword]
-            if isinstance(val, float) or isinstance(val, int):
-                return float(val)
-            else:
-                raise TypeError("ParameterScalar expects scalar to be int or float.")
+        # We only allow for int or float
+        if isinstance(val, float):
+            return val
+        elif isinstance(val, int):
+            return float(val)
+        else:
+            raise TypeError(f"Expected 'int' or 'float'. Encountered {type(val)} instead.")
 
 
 class ParameterUpdate:
@@ -246,10 +331,10 @@ class ParameterUpdate:
         self._param_key = param_key
 
     def update_mortar_conductivity_state(
-            self,
-            is_mortar_conductive: np.ndarray,
-            edges_list: List[Tuple[pp.Grid, pp.Grid]]
-            ):
+        self,
+        is_mortar_conductive: np.ndarray,
+        edges_list: List[Tuple[pp.Grid, pp.Grid]],
+    ):
         """
         Updates the state of mortar cells for a given set of edges
         """
@@ -272,15 +357,15 @@ class TimeSteppingControl:
     """Parent class for iteration-based time stepping control routine."""
 
     def __init__(
-            self,
-            time_init_final: Tuple[float, float],
-            dt_init: float,
-            dt_min_max: Tuple[float, float],
-            iter_max: int,
-            iter_optimal_range: Tuple[int, int],
-            iter_lowupp_factor: Optional[Tuple[float, float]] = None,
-            recomp_factor: Optional[float] = None,
-            recomp_max: Optional[int] = None,
+        self,
+        time_init_final: Tuple[float, float],
+        dt_init: float,
+        dt_min_max: Tuple[float, float],
+        iter_max: int,
+        iter_optimal_range: Tuple[int, int],
+        iter_lowupp_factor: Optional[Tuple[float, float]] = None,
+        recomp_factor: Optional[float] = None,
+        recomp_max: Optional[int] = None,
     ):
         """Computes the next time step based on the number of non-linear iterations.
 
@@ -306,11 +391,17 @@ class TimeSteppingControl:
         if dt_init <= 0:
             raise ValueError("Initial time step must be positive")
         elif dt_init > time_init_final[1]:
-            raise ValueError("Inital time step cannot be larger than final simulation time.")
+            raise ValueError(
+                "Inital time step cannot be larger than final simulation time."
+            )
         elif dt_init < dt_min_max[0]:
-            raise ValueError("Intial time step cannot be smaller than minimum time step.")
+            raise ValueError(
+                "Intial time step cannot be smaller than minimum time step."
+            )
         elif dt_init > dt_min_max[1]:
-            raise ValueError("Intial time step cannot be larger than maximum time step.")
+            raise ValueError(
+                "Intial time step cannot be larger than maximum time step."
+            )
 
         if dt_min_max[0] > dt_min_max[1]:
             s = "Minimum time step cannot be larger than maximum time step."
@@ -337,7 +428,9 @@ class TimeSteppingControl:
             raise ValueError("Expected recomputation factor < 1")
 
         if (recomp_max is not None) and recomp_max <= 0:
-            raise ValueError("Number of recomputation attempts must be a positive integer")
+            raise ValueError(
+                "Number of recomputation attempts must be a positive integer"
+            )
 
         # Initial and final time
         self.time_init, self.time_final = time_init_final
@@ -426,9 +519,11 @@ class TimeSteppingControl:
         #   Set to True the recomputation flag
         #   Increase counter that keeps track of how many times the solution was recomputed
         if iters == self.iter_max:
-            print("Solution did not convergece. Reducing time step and recomputing solution.")
+            print(
+                "Solution did not convergece. Reducing time step and recomputing solution."
+            )
             self.time -= self.dt  # reduce time
-            self.dt = self.dt * self.recomp_factor # reduce time step
+            self.dt = self.dt * self.recomp_factor  # reduce time step
             self.recomp_sol = True
             self._recomp_num += 1
             return self.dt
@@ -486,111 +581,276 @@ class TimeSteppingControl:
     #
     #     return dt
 
-#%% Ghost Projections
+
+# %% Ghost Projections
 class GhostProjection:
-
-    def __init__(self, gb_ghost, g_fracture):
-
+    def __init__(self, gb_ghost: pp.GridBucket, g_fracture: pp.Grid):
         self._gb = gb_ghost
-        self._g = g_fracture
+        self._gridlist: List[pp.Grid] = [g for g, _ in self._gb]
+        self._edgelist: List[Edge] = [e for e, _ in self._gb.edges()]
+        self._gfrac = g_fracture
 
         # Get hold of ghost mortar projections
-        mortar_projection = pp.ad.MortarProjections(gb=gb_ghost)
-        self._secondary_to_mortar_avg = mortar_projection.secondary_to_mortar_avg.parse(gb=gb_ghost)
+        proj = pp.ad.MortarProjections(
+            gb=self._gb, grids=self._gridlist, edges=self._edgelist
+        )
+        # We only need secondary -> mortar (average)
+        self._secondary_to_mortar_avg = proj.secondary_to_mortar_avg.parse(gb=self._gb)
 
         # Get hold of ghost subdomain projections
-        subdomain_projection = pp.ad.SubdomainProjections(gb=gb_ghost)
-        self._cell_prolongation = subdomain_projection.cell_prolongation(self._g).parse(gb=gb_ghost)
+        subdomain_projection = pp.ad.SubdomainProjections(grids=self._gridlist)
+        # We need the prolongation from the fracture to the global number of cells
+        self._cell_prolongation = subdomain_projection.cell_prolongation(
+            grids=[self._gfrac]
+        ).parse(gb=self._gb)
 
-    def secondary_to_mortar(self, fracture_pressure):
-
-        proj_fracture_pressure = self._secondary_to_mortar_avg * self._cell_prolongation * fracture_pressure
+    def secondary_to_mortar(self, fracture_pressure: pp.ad.Operator) -> pp.ad.Operator:
+        proj_fracture_pressure = (
+            self._secondary_to_mortar_avg * self._cell_prolongation * fracture_pressure
+        )
 
         return proj_fracture_pressure
 
 
-#%% Fracture pressure-related classes
-class HydrostaticFracturePressure:
+# %% Fracture pressure-related classes
 
+class GhostFractureHydraulicHead:
+    """
+    Given the "real" fracture hydraulic head, compute the "ghost" fracture hydraulic head.
+    """
+
+    # TODO: Extend this to several fractures. The idea will be to accept a list of ghost
+    #  grids instead of only one grid.
+    def __init__(self, gb: pp.GridBucket, ghost_grid: pp.Grid):
+        """Init method for the class."""
+
+        self._g: pp.Grid = ghost_grid
+        self._gb: pp.GridBucket = gb
+        self._dim_max: int = self._gb.dim_max()
+
+        # Sanity check
+        if self._g.dim >= self._dim_max:
+            raise ValueError(f"Ghost grid cannot be of dimension {self._g.dim}.")
+
+        # Get cell centers and store them in a list
+        self._cc = self._g.cell_centers[self._dim_max - 1]
+
+    def __repr__(self) -> str:
+        return "Ghost fracture hydraulic head AD object."
+
+    def get_ghost_hyd_head(self, h_frac: Union[AdArray, NonAd]) -> Union[AdArray, NonAd]:
+        """
+        Computes the hydraulic head for a ghost fracture grid given the hydraulic head with
+        dof = 1.
+
+        Parameters:
+            h_frac (Ad_array or non-ad): fracture hydraulic head of physcial grid bucket.
+            This can be an active Ad_array of val.size = 1 or a non-ad scalar object.
+        Returns:
+            ghost_h_frac (Ad_array or non-ad): hydraulic head corresponding to the ghost
+            fracture grid. If the ghost fracture cell is dry, the hydraulic head is equal to
+            the elevation of such cell, otherwise, it takes the value of h_frac.
+
+        Mathematically, the condition is given by
+                            { z_cc,    h_frac < z_cc
+            ghost_h_frac =  {
+                            { h_frac,  otherwise
+        """
+
+        if isinstance(h_frac, pp.ad.Ad_array):
+            # Create broadcasting matrix. This is needed to obtain the right shape of the
+            # Jacobian since PorePy won't do that for us automatically.
+            broadcaster = sps.csr_matrix(np.ones_like(self._cc)).reshape((-1, 1))
+            # Broadcasted hydraulic head
+            ghost_h_frac = broadcaster * h_frac
+            # Perform sanity check to the size of the Jacobian
+            if not ghost_h_frac.jac.shape[0] == self._cc.shape[0]:
+                raise ValueError(
+                    f"Expected Jacobian with {self._cc.shape[0]} rows. "
+                    f"Got {ghost_h_frac.jac.shape[0]} instead."
+                )
+            # Now, we need to correct the values of the hydraulic head for the dry parts of
+            # the fracture domain. Essentially, in these cells, the pressure head = 0,
+            # since there is only air. Therefore h = 0 + z_cc = z_cc for the dry cells.
+            dry_cells = ghost_h_frac.val < self._cc
+            ghost_h_frac.val[dry_cells] = self._cc[dry_cells]
+        else:
+            ghost_h_frac = h_frac * np.ones_like(self._cc)
+            dry_cells = ghost_h_frac < self._cc
+            ghost_h_frac[dry_cells] = self._cc[dry_cells]
+
+        return ghost_h_frac
+
+
+class FractureVolume:
+
+    def __init__(self, ghost_grid: pp.Grid, data: dict, param_key: str):
+
+        self._g: pp.Grid = ghost_grid
+        self._d: dict = data
+        self._param_key: str = param_key
+
+        # Get datum in absolute coordinates
+        if self._g.dim == 2:  # if fracture grid is 2D, then ambient dimension is 3D
+            datum: float = np.min(self._g.face_centers[2])
+        elif self._g.dim == 1:  # if fracture grid is 1D, then ambient dimension is 2D
+            datum: float = np.min(self._g.face_centers[1])
+        else:
+            raise NotImplementedError(f"Grid cannot be of dimension {self._g.dim}")
+        self._datum: float = datum
+
+        # Get aperture
+        aperture: float = self._d[pp.PARAMETERS][self._param_key]["aperture"]
+        if not (isinstance(aperture, int) or isinstance(aperture, float)):
+            raise ValueError("Aperture can only be a scalar for now.")
+        self._aperture: float = aperture
+
+        # Get cell centers
+        if self._g.dim == 2:
+            cell_centers: np.ndarray = self._g.cell_centers[2]
+        elif self._g.dim == 1:
+            cell_centers: np.ndarray = self._g.cell_centers[1]
+        else:
+            raise NotImplementedError(f"Grid cannot be of dimension {self._g.dim}")
+        self._cc: np.ndarray = cell_centers
+
+    def __repr__(self) -> str:
+        return "Hydrostatic water fracture pressure Ad operator"
+
+    def fracture_volume(self, hydraulic_head: Union[AdArray, NonAd]) -> Union[AdArray, NonAd]:
+
+        # Get grid volume
+        grid_vol: float = self._g.cell_volumes.sum() * self._aperture
+
+        # In its most basic form, the water volume V_f is related to the hydraulic head h_f
+        # via the following piecewise-linear relationship:
+        #
+        #               { aper * (h_f - datum),    h_f <= grid_vol/aper + datum
+        #   V_f(h_f) =  {
+        #               { grid_vol          ,      otherwise
+        #
+        # Note that this relationship is only valid for water in hydrostatic equilibrium
+        # BUG: Most likely there is a bug here in the else statement, note that water volume
+        #  will not be a function of the hydraulic_head anymore, and in the way is
+        #  represented right now, it will not even be an pp.ad.Ad_array object
+        if isinstance(hydraulic_head, pp.ad.Ad_array):
+            water_volume = self._aperture * (hydraulic_head - self._datum)
+            #condition = hydraulic_head.val <= (grid_vol / self._aperture + self._datum)
+            # Correct values for dry cells
+            water_volume.val[water_volume.val >= grid_vol] = grid_vol
+        else:
+            water_volume = self._aperture * (hydraulic_head - self._datum)
+            #condition = hydraulic_head <= (grid_vol / self._aperture + self._datum)
+            # Correct values for dry cells
+            water_volume[water_volume >= grid_vol] = grid_vol
+
+        return water_volume
+
+    def volume_capacity(self, hydraulic_head: Union[AdArray, NonAd]) -> NonAd:
+        """Computes the derivative of the volume with respect to the hydraulic head
+
+         Parameters:
+             hydraulic_head: NonAd object for the moment
+
+         Returns:
+            derivative of the volume with respect to the hydraulic head
+        """
+        # Get grid volume
+        grid_vol: float = self._g.cell_volumes.sum() * self._aperture
+
+        if isinstance(hydraulic_head, pp.ad.Ad_array):
+            raise ValueError("Hydraulic head cannot be pp.ad.Ad_Array.")
+        else:
+            is_full = self._aperture * (hydraulic_head + self._datum) >= grid_vol
+            if not is_full:
+                return self._aperture
+            else:
+                return 0
+
+class HydrostaticFracturePressure:
     """
     Given a volume of water, it returns the hydrostatic pressure head in the fracture. It is assumed
     that the aperture is given as a field in the grid's data dictionary. If the pressure calculated
     pressure head is negative, the value for that cell is corrected and assumed to be zero.
     """
 
-    def __init__(self, ghost_grid, data, param_key):
+    def __init__(self, ghost_grid: pp.Grid, data: dict, param_key: str):
 
-        self._g = ghost_grid
-        self._d = data
-        self._param_key = param_key
+        self._g: pp.Grid = ghost_grid
+        self._d: dict = data
+        self._param_key: str = param_key
 
         # Get datum in absolute coordinates
         if self._g.dim == 2:  # if fracture grid is 2D, then ambient dimension is 3D
-            datum = np.min(self._g.face_centers[2])
+            datum: float = np.min(self._g.face_centers[2])
         elif self._g.dim == 1:  # if fracture grid is 1D, then ambient dimension is 2D
-            datum = np.min(self._g.face_centers[1])
+            datum: float = np.min(self._g.face_centers[1])
         else:
             raise NotImplementedError(f"Grid cannot be of dimension {self._g.dim}")
-        self._datum = datum
+        self._datum: float = datum
 
         # Get aperture
-        aperture = self._d[pp.PARAMETERS][self._param_key]["aperture"]
+        aperture: float = self._d[pp.PARAMETERS][self._param_key]["aperture"]
         if not (isinstance(aperture, int) or isinstance(aperture, float)):
             raise ValueError("Aperture can only be a scalar for now.")
-        self._aperture = aperture
+        self._aperture: float = aperture
 
         # Get cell centers
         if self._g.dim == 2:
-            cell_centers = self._g.cell_centers[2]
+            cell_centers: np.ndarray = self._g.cell_centers[2]
         elif self._g.dim == 1:
-            cell_centers = self._g.cell_centers[1]
+            cell_centers: np.ndarray = self._g.cell_centers[1]
         else:
             raise NotImplementedError(f"Grid cannot be of dimension {self._g.dim}")
-        self._cc = cell_centers
+        self._cc: np.ndarray = cell_centers
 
     def __repr__(self) -> str:
         return "Hydrostatic water fracture pressure Ad operator"
 
-    def get_pressure_head(self, water_volume):
+    def get_pressure_head(
+        self, water_volume: Union[pp.ad.Ad_array, Scalar, np.ndarray]
+    ) -> Union[pp.ad.Ad_array, Scalar, np.ndarray]:
+        """
+        Computes pressure head for a ghost fracture grid given the water volume.
 
-        # Check size of the input first, water_volume is only meant to have size 1
+        Parameters
+            water_volume (Ad_array or Scalar or np.ndarray of size 1): water volume. This can
+            be an active Ad_array of val.size = 1 or a non-ad scalar object.
+        Return
+
+        """
+
         if isinstance(water_volume, pp.ad.Ad_array):
-            if water_volume.val.size > 1:
-                raise ValueError("Only 1 degree of freedom is permitted in the fracture.")
-        elif isinstance(water_volume, np.ndarray):
-            if water_volume.size > 1:
-                raise ValueError("Only 1 degree of freedom is permitted in the fracture.")
-
-        # Create broadcasting matrix. This is needed to obtain the right shape of the Jacobian
-        # since PorePy won't do that for us automatically.
-        broadcaster = sps.csr_matrix(np.ones_like(self._cc)).reshape((-1, 1))
-
-        # Obtain the height of the air-water interface in absolute coordinates
-        # TODO: This might be updated when we move to two-dimensional fractures
-        airwater_interface = water_volume * (1/self._aperture) + self._datum
-
-        # Get the value of the pressure head
-        pressure_head = broadcaster * airwater_interface - self._cc
-        # Perform sanity check on the size of the Jacobian
-        if isinstance(pressure_head, pp.ad.Array):
+            # Create broadcasting matrix. This is needed to obtain the right shape of the
+            # Jacobian since PorePy won't do that for us automatically.
+            broadcaster = sps.csr_matrix(np.ones_like(self._cc)).reshape((-1, 1))
+            # Obtain the height of the air-water interface in absolute coordinates
+            # TODO: This might be updated when we move to two-dimensional fractures
+            airwater_interface = water_volume * (1 / self._aperture) + self._datum
+            # Get the value of the pressure head
+            pressure_head = broadcaster * airwater_interface - self._cc
+            # Perform sanity check on the size of the Jacobian
             if not pressure_head.jac.shape[0] == self._cc.shape[0]:
-                raise ValueError(f"Expected Jacobian with {self._cc.shape[0]} rows. Got {pressure_head.jac.shape[0]} instead.")
-
-        # Now, we need to correct the values of the pressure head since negative values are not
-        # permitted. Again, this might change when we handle different capillary barrier values
-        if isinstance(pressure_head, pp.ad.Ad_array):
+                raise ValueError(
+                    f"Expected Jacobian with {self._cc.shape[0]} rows. "
+                    f"Got {pressure_head.jac.shape[0]} instead."
+                )
+            # Now, we need to correct the values of the pressure head since negative values
+            # are not permitted. Again, this might change when we handle different capillary
+            # barrier values
             pressure_head.val[pressure_head.val < 0] = 0
-        elif isinstance(pressure_head, np.ndarray):
+        else:
+            airwater_interface = water_volume / self._aperture + self._datum
+            pressure_head = airwater_interface - self._cc
             pressure_head[pressure_head < 0] = 0
 
         return pressure_head
 
 
-
-#%% INTERFACE UPSTREAM WEIGHTING
+# %% INTERFACE UPSTREAM WEIGHTING
 class InterfaceUpwindAd(ApplicableOperator):
     """
-    Computes the interface relative permeabilities based on the (projected) 
+    Computes the interface relative permeabilities based on the (projected)
     pressure jump associated with the bulk and fractur potentials.
     """
 
@@ -601,12 +861,12 @@ class InterfaceUpwindAd(ApplicableOperator):
     def __repr__(self) -> str:
         return "Interface upwind AD operator"
 
-    #TODO: Add sanity check to check if input matches amount of mortar cells in gb
-    #TODO: Write tests
+    # TODO: Add sanity check to check if input matches amount of mortar cells in gb
+    # TODO: Write tests
     def apply(self, trace_p_bulk, krw_trace_p_bulk, p_frac, krw_p_frac):
         """
         Apply method for upwinding of interface relative permeabilities.
-                
+
         Parameters
         ----------
         trace_p_bulk : nd-array of size total_num_of_mortar_cells
@@ -617,7 +877,7 @@ class InterfaceUpwindAd(ApplicableOperator):
             Mortar-projected fracture pressures.
         krw_p_frac : nd-array of size total_num_of_mortar_cells
             Mortar-projected relative permeabilites of fracture presure
-            
+
         Raises
         ------
         TypeError
@@ -626,15 +886,17 @@ class InterfaceUpwindAd(ApplicableOperator):
         Returns
         -------
         interface_krw : Sparse Matrix of size total_num_mortar_cells ** 2
-            Diagonal matrix with each entry representing the value of 
+            Diagonal matrix with each entry representing the value of
             the relative permeability associated with the mortar cell
         """
 
         # Sanity check of input type
-        if (isinstance(trace_p_bulk, pp.ad.Ad_array) or
-            isinstance(krw_trace_p_bulk, pp.ad.Ad_array) or
-            isinstance(p_frac, pp.ad.Ad_array) or
-            isinstance(krw_p_frac, pp.ad.Ad_array)):
+        if (
+            isinstance(trace_p_bulk, pp.ad.Ad_array)
+            or isinstance(krw_trace_p_bulk, pp.ad.Ad_array)
+            or isinstance(p_frac, pp.ad.Ad_array)
+            or isinstance(krw_p_frac, pp.ad.Ad_array)
+        ):
             raise TypeError("Input cannot be of type Ad array")
         else:
             pressure_jump = trace_p_bulk - p_frac
@@ -646,7 +908,8 @@ class InterfaceUpwindAd(ApplicableOperator):
 
         return interface_krw
 
-#%% BULK FACE AVERAGING SCHEMES
+
+# %% BULK FACE AVERAGING SCHEMES
 
 # Arithmetic average of the bulk
 class ArithmeticAverageAd(ApplicableOperator):
@@ -666,7 +929,7 @@ class ArithmeticAverageAd(ApplicableOperator):
 
     def apply(self, inner_values, dir_bound_values):
         """
-        Apply arithmetich average 
+        Apply arithmetich average
 
         Parameters
         ----------
@@ -687,7 +950,7 @@ class ArithmeticAverageAd(ApplicableOperator):
 
         """
 
-        if isinstance(inner_values, Ad_array):
+        if isinstance(inner_values, pp.ad.Ad_array):
             raise TypeError("Object cannot be of the type Ad_array")
         else:
             # Retrieve usefuld data
@@ -702,7 +965,7 @@ class ArithmeticAverageAd(ApplicableOperator):
             int_fcs_neigh = fcs_neigh[int_fcs]
 
             # Initialize array
-            face_avg = np.ones(self._g.num_faces) # Neumann krw=1.0
+            face_avg = np.ones(self._g.num_faces)  # Neumann krw=1.0
 
             # Values at Dirichlet boundaries
             dir_cells_neigh = fcs_neigh[dir_fcs]
@@ -714,8 +977,7 @@ class ArithmeticAverageAd(ApplicableOperator):
 
             # Values at internal faces
             face_avg[int_fcs] = 0.5 * (
-                inner_values[int_fcs_neigh[:, 0]]
-                + inner_values[int_fcs_neigh[:, 1]]
+                inner_values[int_fcs_neigh[:, 0]] + inner_values[int_fcs_neigh[:, 1]]
             )
 
         return sps.spdiags(face_avg, 0, self._g.num_faces, self._g.num_faces)
@@ -723,7 +985,8 @@ class ArithmeticAverageAd(ApplicableOperator):
 
 # Flux-based upwinding scheme
 class UpwindFluxBasedAd(ApplicableOperator):
-    """ Flux based upwinding of cell-center arrays """
+    """Flux based upwinding of cell-center arrays"""
+
     # Credits: @jwboth
 
     def __init__(self, g, d, param_key, hs: Callable = heaviside):
@@ -756,10 +1019,13 @@ class UpwindFluxBasedAd(ApplicableOperator):
         cf_is_boundary = np.logical_not(cf_inner)
         self._cf_is_boundary = cf_is_boundary
         self._is_dir = d[pp.PARAMETERS][param_key]["bc"].is_dir.copy()
-        self._cf_is_dir = [np.logical_and(cf_is_boundary[i], self._is_dir) for i in range(0, 2)]
+        self._cf_is_dir = [
+            np.logical_and(cf_is_boundary[i], self._is_dir) for i in range(0, 2)
+        ]
         self._is_neu = d[pp.PARAMETERS][param_key]["bc"].is_neu.copy()
-        self._cf_is_neu = [np.logical_and(cf_is_boundary[i], self._is_neu) for i in range(0, 2)]
-
+        self._cf_is_neu = [
+            np.logical_and(cf_is_boundary[i], self._is_neu) for i in range(0, 2)
+        ]
 
     def __repr__(self) -> str:
         return " Flux-based upwind AD face operator"
@@ -769,7 +1035,7 @@ class UpwindFluxBasedAd(ApplicableOperator):
 
         Idea: 'face value' = 'left cell value' * Heaviside('flux from left')
                            + 'right cell value' * Heaviside('flux from right').
-        
+
         Parameters
         ----------
         inner_values : np.ndarray of size g.num_cells
@@ -799,8 +1065,8 @@ class UpwindFluxBasedAd(ApplicableOperator):
 
         # Use Dirichlet boundary data where suitable.
         # Neglect Neumann boundaries since Neumann boundary data does not play a role.
-        if isinstance(inner_values, Ad_array) or isinstance(face_flux, Ad_array):
-            raise TypeError("Object cannot be of the type Ad_array")
+        if isinstance(inner_values, pp.ad.Ad_array) or isinstance(face_flux, pp.ad.Ad_array):
+            raise TypeError("Object cannot be of the type pp.ad.Ad_array.")
         else:
             val_f = [cf_inner[i] * inner_values for i in range(0, 2)]
             for i in range(0, 2):
@@ -819,9 +1085,160 @@ class UpwindFluxBasedAd(ApplicableOperator):
         return sps.spdiags(face_upwind, 0, self._g.num_faces, self._g.num_faces)
 
 
-#%% SOIL WATER RETENTION CURVES
+# %% SOIL WATER RETENTION CURVES
+class SoilWaterRetentionCurves:
+    """Parent class for soil-water retention curves (SWRC)."""
+
+    def __init__(self, gb: pp.GridBucket, param_key: str):
+        """Init method for the class.
+
+        Parameters:
+            gb (GridBucket): Mixed-dimensional grid bucket. Note that we assume that the
+                relevant parameters, i.e., "alpha_vG", "theta_r", "theta_s", "n_vG", "m_vG",
+                "hydrostatic_volume" exist in the grid data dictionaries.
+            param_key (str): Keyword to access the data parameter.
+
+        """
+
+        self._gb: pp.GridBucket = gb
+        self._kw: str = param_key
+
+        # Note that assume that the SWRC parameters are stored in the dictionary of
+        # the ambient grid. In the future, we could assign different SWRC to each grid.
+        # However, for this project, this works justs fine.
+        g_bulk: pp.Grid = self._gb.grids_of_dimension(self._gb.dim_max())[0]
+        d_bulk: dict = self._gb.node_props(g_bulk)
+        param_dict: dict = d_bulk[pp.PARAMETERS][self._kw]
+        self.alpha_vG: Scalar = param_dict["alpha_vG"]  # alpha parameter
+        self.theta_r: Scalar = param_dict["theta_r"]  # residual water content
+        self.theta_s: Scalar = param_dict["theta_s"]  # water content at sat contditions
+        self.n_vG: Scalar = param_dict["n_vG"]  # n parameter
+        self.m_vG: Scalar = param_dict["m_vG"]  # m parameter
+
+    def __repr__(self):
+        # TODO: Add a proper __repr__ showing the attributes
+        return "Soil-water retention curve (van Genuchten-Mualem) object."
+
+    def water_content(
+        self, pressure_head: Union[AdArray, NonAd]
+    ) -> Union[AdArray, NonAd]:
+        """Water content as function of the pressure head.
+
+        Parameters:
+            pressure_head (Ad-array or non-ad object): pressure head
+        Returns:
+            theta (Ad-array or non-ad object): water content
+        """
+
+        if isinstance(pressure_head, pp.ad.Ad_array):
+            is_unsat = self._is_unsat(pressure_head.val)
+            is_sat = 1 - is_unsat
+            num = self.theta_s - self.theta_r
+            den = (
+                1 + (self.alpha_vG * pp.ad.abs(pressure_head)) ** self.n_vG
+            ) ** self.m_vG
+            theta = (
+                num * den ** (-1) + self.theta_r
+            ) * is_unsat + self.theta_s * is_sat
+        else:  # typically int, float, or np.ndarray
+            is_unsat = self._is_unsat(pressure_head)
+            is_sat = 1 - is_unsat
+            num = self.theta_s - self.theta_r
+            den = (
+                1 + (self.alpha_vG * np.abs(pressure_head)) ** self.n_vG
+            ) ** self.m_vG
+            theta = (num / den + self.theta_r) * is_unsat + self.theta_s * is_sat
+
+        return theta
+
+    def effective_saturation(
+        self, pressure_head: Union[AdArray, NonAd]
+    ) -> Union[AdArray, NonAd]:
+        """Effective saturation as a function of the pressure head.
+
+        Parameters:
+            pressure_head (Ad-array or non-ad object): pressure head
+        Returns:
+            s_eff (Ad-array or non-ad object): effective (normalized) saturation
+        """
+
+        num = self.water_content(pressure_head) - self.theta_r
+        den = self.theta_s - self.theta_r
+        s_eff = num * den ** (-1)
+
+        return s_eff
+
+    def relative_permeability(self, pressure_head: NonAd) -> NonAd:
+        """Relative permeability as a function of the pressure head.
+
+        Parameters:
+            pressure_head (non-ad object): pressure head
+        Returns:
+            krw (non-ad object): water relative permeability
+        """
+
+        # TODO: Add possibility to pass an pp.ad.Array
+        if isinstance(pressure_head, pp.ad.Ad_array):
+            raise TypeError("Pressure head cannot be AD. Expected non-ad object.")
+        else:  # typically int, float, or np.ndarray
+            s_eff = self.effective_saturation(pressure_head)
+            krw = s_eff ** 0.5 * (1 - (1 - s_eff ** (1 / self.m_vG)) ** self.m_vG) ** 2
+
+        return krw
+
+    def moisture_capacity(self, pressure_head: NonAd) -> NonAd:
+        """Specific moisture capacity as a function of the pressure head
+
+        Parameters:
+            pressure_head (non-ad object): pressure head
+        Returns:
+            moist_capacity (non-ad object): moisture capacitiy, i.e., d(theta)/d(psi).
+        """
+
+        # TODO: Add possibility to pass an pp.ad.Array
+        if isinstance(pressure_head, pp.ad.Ad_array):
+            raise TypeError("Pressure head cannot be AD. Expected non-ad object.")
+        else:  # typically int, float, or np.ndarray
+            is_unsat = self._is_unsat(pressure_head)
+            is_sat = 1 - is_unsat
+            num = (
+                -self.m_vG
+                * self.n_vG
+                * (self.theta_s - self.theta_r)
+                * (self.alpha_vG * np.abs(pressure_head)) ** self.n_vG
+            )
+            den = pressure_head * (
+                (self.alpha_vG * np.abs(pressure_head)) ** self.n_vG + 1
+            ) ** (self.m_vG + 1)
+            # Here, we have to be particulary careful with zero division. If zero is
+            # encountered in the denominator, we force the moisture capacity to be zero.
+            moist_capacity = (
+                np.divide(num, den, out=np.zeros_like(num), where=den != 0)
+                * self._is_unsat(pressure_head)
+                + 0 * is_sat
+            )
+
+        return moist_capacity
+
+    # Helpers
+    @staticmethod
+    def _is_unsat(pressure_head: NonAd) -> NonAd:
+        """Determines whether is saturated or not based on the value of the pressure head.
+
+        Parameters
+            pressure_head (non-ad): containing the values of the pressure heads.
+        Returns
+            non-ad: 1 if pressure_head < 0, and 0 otherwise.
+        """
+        if isinstance(pressure_head, pp.ad.Ad_array):
+            raise TypeError("Pressure head cannot be AD. Expected non-ad object.")
+        else:
+            return 1 - heaviside(pressure_head, 1)
+
 
 class vanGenuchten:
+    """ "Parent class for van Genuchten-Mualem soil-water retention curves"""
+
     def __init__(self, g, d, param_key):
         self._g = g
         self._d = d
@@ -838,7 +1255,7 @@ class vanGenuchten:
         return "Soil Water Retention Curve: van Genuchtem-Mualem model"
 
     def is_unsat(self, p):
-        """ Determine whether the cell is saturated or not """
+        """Determine whether the cell is saturated or not"""
 
         if isinstance(p, pp.ad.Ad_array):
             raise TypeError("Pressure cannot be AD. Expected inactive variable.")
@@ -848,15 +1265,16 @@ class vanGenuchten:
             return 1 - heaviside(p, 1)
 
     def water_content(self, p):
-        """ Water content as a function of the pressure head"""
+        """Water content as a function of the pressure head"""
 
         if isinstance(p, pp.ad.Ad_array):
             is_unsat = self.is_unsat(p.val)
             is_sat = 1 - is_unsat
             num = self.theta_s - self.theta_r
             den = (1 + (self.alpha_vG * pp.ad.abs(p)) ** self.n_vG) ** self.m_vG
-            theta = ((num * den ** (-1) + self.theta_r) * is_unsat
-                     + self.theta_s * is_sat)
+            theta = (
+                num * den ** (-1) + self.theta_r
+            ) * is_unsat + self.theta_s * is_sat
         else:
             is_unsat = self.is_unsat(p)
             is_sat = 1 - is_unsat
@@ -867,7 +1285,7 @@ class vanGenuchten:
         return theta
 
     def effective_saturation(self, p):
-        """ Effective saturation as a function of the water content """
+        """Effective saturation as a function of the water content"""
 
         num = self.water_content(p) - self.theta_r
         den = self.theta_s - self.theta_r
@@ -876,34 +1294,41 @@ class vanGenuchten:
         return s_eff
 
     def relative_permeability(self, p):
-        """ Relative permeability as a function of the effective saturation"""
+        """Relative permeability as a function of the effective saturation"""
 
         if isinstance(p, pp.ad.Ad_array):
             raise TypeError("Pressure cannot be AD. Expected previous_iteration()")
         else:
-            krw = (self.effective_saturation(p) ** (0.5) *
-                   (1 - (1 - self.effective_saturation(p) ** (1/self.m_vG))
-                    ** self.m_vG) ** 2 )
+            krw = (
+                self.effective_saturation(p) ** (0.5)
+                * (
+                    1
+                    - (1 - self.effective_saturation(p) ** (1 / self.m_vG)) ** self.m_vG
+                )
+                ** 2
+            )
 
         return krw
 
-
     def moisture_capacity(self, p):
-        """ Specific moisture capacity as a function of the pressure head"""
+        """Specific moisture capacity as a function of the pressure head"""
 
         if isinstance(p, pp.ad.Ad_array):
             raise TypeError("Pressure cannot be AD. Expected previous_iteration()")
         else:
             is_unsat = self.is_unsat(p)
             is_sat = 1 - is_unsat
-            num = (- self.m_vG * self.n_vG *
-                   (self.theta_s - self.theta_r) *
-                   (self.alpha_vG * np.abs(p)) ** self.n_vG)
-            den = (p * ((self.alpha_vG * np.abs(p)) ** self.n_vG + 1)
-                   ** (self.m_vG + 1))
-            C = (np.divide(num, den, out=np.zeros_like(num), where=den!=0) * self.is_unsat(p)
-                + 0 * is_sat)
+            num = (
+                -self.m_vG
+                * self.n_vG
+                * (self.theta_s - self.theta_r)
+                * (self.alpha_vG * np.abs(p)) ** self.n_vG
+            )
+            den = p * ((self.alpha_vG * np.abs(p)) ** self.n_vG + 1) ** (self.m_vG + 1)
+            C = (
+                np.divide(num, den, out=np.zeros_like(num), where=den != 0)
+                * self.is_unsat(p)
+                + 0 * is_sat
+            )
 
         return C
-
-
