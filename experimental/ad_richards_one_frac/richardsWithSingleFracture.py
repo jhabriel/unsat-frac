@@ -240,12 +240,12 @@ print(f'>> Conservation bulk: \n {conserv_bulk_num.jac.A} \n')
 # conserv_frac_eval.discretize(gb)
 
 # #%% Declare equations for the interface
-# mpfa_global = pp.ad.MpfaAd(param_key, grid_list)
+# mpfa_global = pp.ad.MpfaAd(kw, grid_list)
 # pressure_trace_from_high = (
 #     mortar_proj.primary_to_mortar_avg * mpfa_global.bound_pressure_cell * psi
 #     + mortar_proj.primary_to_mortar_avg * mpfa_global.bound_pressure_face * mortar_proj.mortar_to_primary_int * lmbda
 #     )    
-# robin = pp.ad.RobinCouplingAd(param_key, edge_list)
+# robin = pp.ad.RobinCouplingAd(kw, edge_list)
 
 # interface_flux_eq = ( 
 #     1e-30 * robin.mortar_scaling * (pressure_trace_from_high - mortar_proj.secondary_to_mortar_avg * psi)
