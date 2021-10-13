@@ -33,7 +33,7 @@ class ArithmeticAverageAd(ApplicableOperator):
 
     def apply(self, inner_values, dir_bound_values):
         """
-        Apply arithmetich average 
+        Apply arithmetich average
 
         Parameters
         ----------
@@ -96,7 +96,7 @@ class ArithmeticAverageAd(ApplicableOperator):
 
 # Flux-based upwinding scheme
 class UpwindFluxBasedAd(ApplicableOperator):
-    """ Flux based upwinding of cell-center arrays """
+    """Flux based upwinding of cell-center arrays"""
 
     # Credits: @jwboth
 
@@ -146,7 +146,7 @@ class UpwindFluxBasedAd(ApplicableOperator):
 
         Idea: 'face value' = 'left cell value' * Heaviside('flux from left')
                            + 'right cell value' * Heaviside('flux from right').
-        
+
         Parameters
         ----------
         inner_values : np.ndarray of size g.num_cells
@@ -218,7 +218,7 @@ class vanGenuchten:
         print("Soil Water Retention Curve: van Genuchtem-Mualem model")
 
     def is_unsat(self, p):
-        """ Determine whether the cell is saturated or not """
+        """Determine whether the cell is saturated or not"""
 
         if isinstance(p, pp.ad.Ad_array):
             raise TypeError("Pressure cannot be AD. Expected inactive variable.")
@@ -228,7 +228,7 @@ class vanGenuchten:
             return 1 - heaviside(p, 1)
 
     def water_content(self, p):
-        """ Water content as a function of the pressure head"""
+        """Water content as a function of the pressure head"""
 
         if isinstance(p, pp.ad.Ad_array):
             is_unsat = self.is_unsat(p.val)
@@ -250,7 +250,7 @@ class vanGenuchten:
         return theta
 
     def effective_saturation(self, p):
-        """ Effective saturation as a function of the water content """
+        """Effective saturation as a function of the water content"""
 
         num = self.water_content(p) - self.theta_r
         den = self.theta_s - self.theta_r
@@ -259,7 +259,7 @@ class vanGenuchten:
         return s_eff
 
     def relative_permeability(self, p):
-        """ Relative permeability as a function of the effective saturation"""
+        """Relative permeability as a function of the effective saturation"""
 
         if isinstance(p, pp.ad.Ad_array):
             raise TypeError("Pressure cannot be AD. Expected previous_iteration()")
@@ -276,7 +276,7 @@ class vanGenuchten:
         return krw
 
     def moisture_capacity(self, p):
-        """ Specific moisture capacity as a function of the pressure head"""
+        """Specific moisture capacity as a function of the pressure head"""
 
         if isinstance(p, pp.ad.Ad_array):
             raise TypeError("Pressure cannot be AD. Expected previous_iteration()")

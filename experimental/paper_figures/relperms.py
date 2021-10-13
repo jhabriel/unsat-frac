@@ -38,14 +38,14 @@ m_vG = 1 - 1 / n_vG  # van Genuchten parameter
 
 #%% SWRC
 def is_unsat(p):
-    """ Determine whether the cell is saturated or not """
+    """Determine whether the cell is saturated or not"""
     # {1, pressure_head < 0
     # {0, otherwise
     return 1 - np.heaviside(p, 1)
 
 
 def water_content(p):
-    """ Water content as a function of the pressure head"""
+    """Water content as a function of the pressure head"""
     unsat = is_unsat(p)
     sat = 1 - unsat
     num = theta_s - theta_r
@@ -55,7 +55,7 @@ def water_content(p):
 
 
 def effective_saturation(p):
-    """ Effective saturation as a function of the water content """
+    """Effective saturation as a function of the water content"""
     num = water_content(p) - theta_r
     den = theta_s - theta_r
     s_eff = num * den ** (-1)
@@ -63,7 +63,7 @@ def effective_saturation(p):
 
 
 def relative_permeability(p):
-    """ Relative permeability as a function of the effective saturation"""
+    """Relative permeability as a function of the effective saturation"""
     krw = (
         effective_saturation(p) ** (0.5)
         * (1 - (1 - effective_saturation(p) ** (1 / m_vG)) ** m_vG) ** 2

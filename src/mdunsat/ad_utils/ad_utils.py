@@ -759,11 +759,11 @@ class FractureVolume:
     def volume_capacity(self, hydraulic_head: Union[AdArray, NonAd]) -> NonAd:
         """Computes the derivative of the volume with respect to the hydraulic head
 
-         Parameters:
-             hydraulic_head: NonAd object for the moment
+        Parameters:
+            hydraulic_head: NonAd object for the moment
 
-         Returns:
-            derivative of the volume with respect to the hydraulic head
+        Returns:
+           derivative of the volume with respect to the hydraulic head
         """
         # Get grid volume
         grid_vol: float = self._g.cell_volumes.sum() * self._aperture
