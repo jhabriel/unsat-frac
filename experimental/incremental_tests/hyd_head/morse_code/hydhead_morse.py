@@ -251,11 +251,9 @@ flux1p_bulk: pp.ad.Operator = (
 )
 
 # Upwinding of relative permeabilities in the bulk
-upwind: mdu.FluxBaseUpwindAd(gb=gb, grid_list=bulk_list, param_key=kw)
+upwind = mdu.FluxBaseUpwindAd(gb=gb, grid_list=bulk_list, param_key=kw)
 zf_bulk_ad = pp.ad.Array(bulk_list[0].face_centers[gfo.dim - 1])
-psi_bc_ad = (
-    bound_bulk - zf_bulk_ad
-)  # pressure head at the faces (only used the dir bc values)
+psi_bc_ad = bound_bulk - zf_bulk_ad
 krw_faces_ad: pp.ad.Operator = upwind(krw_ad(psib_m), krw_ad(psi_bc_ad), flux1p_bulk)
 
 # Multiphase Darcy flux
@@ -301,17 +299,19 @@ conserv_bulk_eq = accumulation_bulk + dt_ad * div_bulk * flux_bulk - dt_ad * sou
 conserv_bulk_eq.discretize(gb=gb)
 conserv_bulk_num = conserv_bulk_eq.evaluate(dof_manager=dof_manager)
 
-# Thus far, thus good... Start from here
-
 # %% Declare equations for the fractures
-fracvol = mdu.FractureVolume(g_frac_ghost, d_frac, kw)
-vol_ad = pp.ad.Function(fracvol.fracture_volume, name="Volume")
-vol_cap_ad = pp.ad.Function(fracvol.volume_capacity, name="Volume capacity")
+fv = mdu.FractureVolume(gb=gb, fracture_grids=frac_list, param_key=kw)
+frac_vol_ad: pp.ad.Function = fv.fracture_volume(as_ad=True)
+vol_cap_ad: pp.ad.Function = fv.volume_capacity(as_ad=True)
+
+# SO FAR SO GOOD. CONTINUE FROM HERE!
+
 gfh = GhostFractureHydraulicHead(gb=gb, ghost_grid=g_frac_ghost)
 ghost_hf_ad = pp.ad.Function(
     gfh.get_ghost_hyd_head, name="Ghost fracture hydraulic head func"
 )
 ghost_hf = ghost_hf_ad(h_frac)
+
 
 linearization = "newton"
 if linearization == "newton":
