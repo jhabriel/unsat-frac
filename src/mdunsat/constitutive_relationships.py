@@ -1,5 +1,6 @@
 import porepy as pp
 import numpy as np
+import scipy.sparse as sps
 from typing import Callable, Optional, Tuple, List, Any, Union, NewType
 
 # Typing abbreviations
@@ -10,94 +11,152 @@ Edge = Tuple[pp.Grid, pp.Grid]
 
 
 class FractureVolume:
+    """Self-made constitutive relationship for fracture volume as a function of the
+    hydraulic head"""
 
-    # TODO: This has to be refactored such that it returns one expression per fracture grid.
-    # possibly, it will take the ghost_fracture_grids and return the function
+    def __init__(
+        self, gb: pp.GridBucket, fracture_grids: List[pp.Grid], param_key: str
+    ):
+        """
+        Init method for the class. It is assumed that the parameter data dictionaries
+        of the given fracture grids contain the keys: "aperture" and "datum".
 
-    def __init__(self, ghost_grid: pp.Grid, data: dict, param_key: str):
+        Parameters:
+            gb (pp.GridBucket): Mixed-dimensional grid bucket.
+            fracture_grids (List of pp.Grid): List of fracture grids.
+            param_key (str): Parameter keyword for accessing the data parameters.
+        """
 
-        self._g: pp.Grid = ghost_grid
-        self._d: dict = data
-        self._param_key: str = param_key
+        self._gb: pp.GridBucket = gb
+        self._grids: List[pp.Grid] = fracture_grids
+        self._kw: str = param_key
+        self._N: int = len(self._grids)  # number of fracture grids
 
-        # Get datum in absolute coordinates
-        if self._g.dim == 2:  # if fracture grid is 2D, then ambient dimension is 3D
-            datum: float = np.min(self._g.face_centers[2])
-        elif self._g.dim == 1:  # if fracture grid is 1D, then ambient dimension is 2D
-            datum: float = np.min(self._g.face_centers[1])
-        else:
-            raise NotImplementedError(f"Grid cannot be of dimension {self._g.dim}")
-        self._datum: float = datum
-
-        # Get aperture
-        aperture: float = self._d[pp.PARAMETERS][self._param_key]["aperture"]
-        if not (isinstance(aperture, int) or isinstance(aperture, float)):
-            raise ValueError("Aperture can only be a scalar for now.")
-        self._aperture: float = aperture
-
-        # Get cell centers
-        if self._g.dim == 2:
-            cell_centers: np.ndarray = self._g.cell_centers[2]
-        elif self._g.dim == 1:
-            cell_centers: np.ndarray = self._g.cell_centers[1]
-        else:
-            raise NotImplementedError(f"Grid cannot be of dimension {self._g.dim}")
-        self._cc: np.ndarray = cell_centers
+        # Get fracture volume, aperture, and datum
+        # TODO: There should be a better way to do this. But for the meantime, it works.
+        frac_vol = []
+        aperture = []
+        datum = []
+        for g in self._grids:
+            d = self._gb.node_props(g)
+            frac_vol.append(g.cell_volumes * d[pp.PARAMETERS][self._kw]["aperture"])
+            aperture.append(d[pp.PARAMETERS][self._kw]["aperture"])
+            datum.append(d[pp.PARAMETERS][self._kw]["datum"])
+        self._fracvol: np.ndarray = np.array(frac_vol)
+        self._aperture: np.ndarray = np.array(aperture)
+        self._datum: np.ndarray = np.array(datum)
 
     def __repr__(self) -> str:
-        return "Hydrostatic water fracture pressure Ad operator"
+        return "Water volume as a function of hydraulic head."
 
+    # Public Methods
     def fracture_volume(
+        self, as_ad: bool = False
+    ) -> Union["_fracture_volume", pp.ad.Function]:
+        """
+        Fracture volume as a function of the hydraulic head.
+
+        Parameters:
+            as_ad (bool): If True the function is wrapped as a pp.ad.Function. If False,
+            the function is passed a regular function.
+
+        Returns:
+            regular classmethod or pp.ad.Function corresponding to the fracture volume
+
+        """
+        if as_ad:
+            return pp.ad.Function(self._fracture_volume, name="fracture volume")
+        else:
+            return self._fracture_volume
+
+    def volume_capacity(
+        self, as_ad: bool = False
+    ) -> Union["_volume_capacity", pp.ad.Function]:
+        """
+        Volume capacity as a function of the hydraulic head.
+
+        Parameters:
+            as_ad (bool): If True the function is wrapped as a pp.ad.Function. If False,
+            the function is passed a regular function.
+
+        Returns:
+            regular classmethod or pp.ad.Function corresponding to the fracture volume
+
+        """
+        if as_ad:
+            return pp.ad.Function(self._volume_capacity, name="volume capacity")
+        else:
+            return self._volume_capacity
+
+    # Private methods
+    def _fracture_volume(
         self, hydraulic_head: Union[AdArray, NonAd]
     ) -> Union[AdArray, NonAd]:
+        """
+        Fracture volume as a function of the pressure head
 
-        # Get grid volume
-        grid_vol: float = self._g.cell_volumes.sum() * self._aperture
+        Parameters:
+            hydraulic_head (pp.ad.Ad_array or non-ad object): containing the value of the
+            hydraulic head.
 
+        Returns:
+            (pp.ad.Ad_array or non-ad object): containing the value of the fracture volume.
+
+        """
         # In its most basic form, the water volume V_f is related to the hydraulic head h_f
         # via the following piecewise-linear relationship:
         #
-        #               { aper * (h_f - datum),    h_f <= grid_vol/aper + datum
+        #               { aper * (h_f - datum),    h_f <= fracture_volume/aper + datum
         #   V_f(h_f) =  {
-        #               { grid_vol          ,      otherwise
+        #               { fracture_volume,         otherwise
         #
         # Note that this relationship is only valid for water in hydrostatic equilibrium
-        # BUG: Most likely there is a bug here in the else statement, note that water volume
-        #  will not be a function of the hydraulic_head anymore, and in the way is
-        #  represented right now, it will not even be an pp.ad.Ad_array object
+
         if isinstance(hydraulic_head, pp.ad.Ad_array):
-            water_volume = self._aperture * (hydraulic_head - self._datum)
-            # condition = hydraulic_head.val <= (grid_vol / self._aperture + self._datum)
-            # Correct values for dry cells
-            water_volume.val[water_volume.val >= grid_vol] = grid_vol
+            # We need to transform the aperture into a diagonal matrix to be able to perform
+            # the multiplication and thus avoid broadcasting errors
+            aper = sps.spdiags(self._aperture, 0, self._N, self._N)
+            water_volume: pp.ad.Ad_array = aper * hydraulic_head - aper * self._datum
+            # If the calculated water volume is greater than the fracture volume,
+            # use the fracture volume instead
+            for idx, _ in enumerate(self._grids):
+                if water_volume.val[idx] > self._fracvol[idx]:
+                    water_volume.val[idx] = self._fracvol[idx]
         else:
-            water_volume = self._aperture * (hydraulic_head - self._datum)
-            # condition = hydraulic_head <= (grid_vol / self._aperture + self._datum)
-            # Correct values for dry cells
-            water_volume[water_volume >= grid_vol] = grid_vol
+            # Here, we don't need to do anything, numpy will take care of correctly
+            # broadcasting everything for us
+            water_volume: np.ndarray = self._aperture * (hydraulic_head - self._datum)
+            # If the calculated water volume is greater than the fracture volume,
+            # use the fracture volume instead
+            for idx, _ in enumerate(self._grids):
+                if water_volume[idx] > self._fracvol[idx]:
+                    water_volume[idx] = self._fracvol[idx]
 
         return water_volume
 
-    def volume_capacity(self, hydraulic_head: Union[AdArray, NonAd]) -> NonAd:
+    def _volume_capacity(self, hydraulic_head: Union[AdArray, NonAd]) -> NonAd:
         """Computes the derivative of the volume with respect to the hydraulic head
 
-         Parameters:
-             hydraulic_head: NonAd object for the moment
+        Parameters:
+            hydraulic_head: non-ad object (for the moment) containing the value of the
+            hydraulic head.
 
-         Returns:
-            derivative of the volume with respect to the hydraulic head
+        Returns:
+           non-ad object: derivative of the volume w.r.t the hydraulic head
         """
-        # Get grid volume
-        grid_vol: float = self._g.cell_volumes.sum() * self._aperture
 
         if isinstance(hydraulic_head, pp.ad.Ad_array):
             raise ValueError("Hydraulic head cannot be pp.ad.Ad_Array.")
         else:
-            is_full = self._aperture * (hydraulic_head + self._datum) >= grid_vol
-            if not is_full:
-                return self._aperture
-            else:
-                return 0
+            water_volume: np.ndarray = self._aperture * (hydraulic_head - self._datum)
+            vol_capacity: np.ndarray = self._aperture
+            # If the calculated water volume is greater than the fracture volume,
+            # set the volume capacity to zero
+            for idx, _ in enumerate(self._grids):
+                if water_volume[idx] > self._fracvol[idx]:
+                    vol_capacity[idx] = 0
+
+        return vol_capacity
 
 
 class VanGenuchtenMualem:
