@@ -14,6 +14,8 @@ AdArray = pp.ad.Ad_array
 NonAd = Union[Scalar, np.ndarray]
 Edge = Tuple[pp.Grid, pp.Grid]
 
+__all__ = ["FluxBaseUpwindAd", "ParameterScalar"]
+
 
 class FluxBaseUpwindAd(ApplicableOperator):
     """Flux based upwinding for faces"""
