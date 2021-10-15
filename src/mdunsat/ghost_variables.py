@@ -5,7 +5,6 @@ Classes for handling ghost variables. That is, variables living in the ghost gri
 import porepy as pp
 import numpy as np
 import scipy.sparse as sps
-from porepy.numerics.ad.operators import Operator, ApplicableOperator
 from typing import Callable, Optional, Tuple, List, Any, Union, NewType, Literal
 
 # Typing abbreviations
@@ -15,55 +14,109 @@ MergedAdVariable = pp.ad.MergedVariable
 NonAd = Union[Scalar, np.ndarray]
 Edge = Tuple[pp.Grid, pp.Grid]
 
-
 __all__ = ["GhostHydraulicHead"]
 
 
 class GhostHydraulicHead:
-    """Projects the fracture hydraulic head onto the mortar grids"""
+    """Parent class for handling discretization and projection of ghost variables.
 
-    def __init__(self, gb, ghost_gb, dof_manager):
-        # TODO: ADD DOC
+    Public attributes:
+    ------------------
+        None
 
+    Public methods:
+    ---------------
+        proj_fra_hyd_head(self, as_ad=False): projects the hydraulic head from the ghost
+            secondary grids onto the mortar grids, either as an pp.ad.Function (as_ad=True)
+            or as a regular method (as_ad=False).
+
+    Private attributes:
+    -------------------
+        self._gb (pp.GridBucket): Mixed-dimensional physical grid bucket.
+        self._ghost_gb (pp.GridBucket): Mixed-dimensional ghost grid bucket.
+        self._maxdim (int): maximum grid dimension (can be either 2 or 3).
+        self._ghost_grids (List[pp.Grid]): List of ghost grids of g.dim >= self._max_dim - 1.
+        self._ghost_edges (List[Edge]): List of ghost edges of mg.dim == self._max_dim.
+        self._ghost_mortar_proj (pp.ad.MortarProjections): ghost mortar projections
+            constructed with self._ghost_gb, self._ghost_grids, and self._ghost_edges.
+        self._ghost_subdomain_proj (pp.ad.SubdomainProjections): ghost subdomain projections
+            constructed with self._ghost_grids.
+        self._cc (np.ndarray): concatatenated cell centers in the z-direction for the grids
+            belonging to self._ghost_grids.
+
+    Private methods:
+    ----------------
+        self._proj_frac_hyd_head(self, h_frac: Union[AdArray, NonAd]): projects h_frac from
+            physical grid bucket onto the mortar grids. An intermediate process requires
+            broadcasting h_frac onto the ghost fracture grids and distinguishing between dry
+            and wet cells.
+        self._get_broadcasting_matrix(self): returns the broadcasting sparse matrix needed
+            to broadcast the fracture hydraulic head from the physical grids onto the ghost
+            grids.
+        self._get_wet_and_dry_cells(self): returns diagonal matrices wet_mat and dry_mat.
+            For wet_mat, entries with 1 denote a wet cell, and 0 a dry cell. For dry_mat,
+            entries with 1 denote a dry cell, and 0 a wet cell.
+    """
+
+    def __init__(self, gb: pp.GridBucket, ghost_gb: pp.GridBucket):
+        """
+        Method for initializing the class.
+
+        Parameters:
+        -----------
+            gb (pp.GridBucket): Mixed-dimensional (physical) grid bucket. Grid fractures
+                should have 1 cell only.
+            ghost_gb (pp.GridBucket): Mixed-dimensional (ghost) grid bucket. Grid fractures
+                should have as many cells as their adjacent mortar grids,
+        """
+
+        # Physical grid bucket
         self._gb: pp.GridBucket = gb
+
+        # Ghost grid bucket
         self._ghost_gb: pp.GridBucket = ghost_gb
-        self._dof_manager: pp.DofManager = dof_manager
+
+        # Maximum dimension
         self._maxdim: int = self._gb.dim_max()
 
-        # Get list of ghost grids and ghost edges
+        # Get list of ghost grids with g.dim >= self._maxdim - 1
         ghost_grids: List[pp.Grid] = []
-        ghost_edges: List[Edge] = []
         for g, _ in self._ghost_gb:
             if g.dim >= self._maxdim - 1:
                 ghost_grids.append(g)
+        self._ghost_grids = ghost_grids
+
+        # Get list of ghost grids with g.dim == self._maxdim (ghost fracture grids)
+        ghost_frac_grids: List[pp.Grid] = []
+        for g, _ in self._ghost_gb:
+            if g.dim == self._maxdim - 1:
+                ghost_frac_grids.append(g)
+        self._ghost_frac_grids = ghost_frac_grids
+
+        # Get list of edges with mg.dim == self._maxdim (ghost edges)
+        ghost_edges: List[Edge] = []
         for e, d in self._ghost_gb.edges():
             mg = d["mortar_grid"]
             if mg.dim >= self._maxdim - 1:
                 ghost_edges.append(e)
-        self._ghost_grids = ghost_grids
         self._ghost_edges = ghost_edges
 
-        # Get mortar projections
+        # Get ghost mortar projections
         ghost_mortar_proj: pp.ad.MortarProjections = pp.ad.MortarProjections(
             gb=self._ghost_gb, grids=self._ghost_grids, edges=self._ghost_edges
         )
         self._ghost_mortar_proj = ghost_mortar_proj
 
-        # Get subdomain projections
+        # Get ghost subdomain projections
         ghost_subdomain_proj: pp.ad.SubdomainProjections = pp.ad.SubdomainProjections(
             grids=self._ghost_grids
         )
         self._ghost_subdomain_proj = ghost_subdomain_proj
 
         # Get elevation heads of the fracture grids by concatenating all ndarrays into one
-        ghost_frac_grids: List[pp.Grid] = []
-        for g, _ in self._ghost_gb:
-            if g.dim == self._maxdim - 1:
-                ghost_frac_grids.append(g)
         self._cc: np.ndarray = np.concatenate(
             [g.cell_centers[self._maxdim - 1] for g in ghost_frac_grids]
         )
-        self._ghost_frac_grids = ghost_frac_grids
 
     # Public methods
     def proj_fra_hyd_head(self, as_ad=False) -> "_proj_frac_hyd_head":
