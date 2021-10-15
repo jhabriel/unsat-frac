@@ -9,6 +9,8 @@ AdArray = pp.ad.Ad_array
 NonAd = Union[Scalar, np.ndarray]
 Edge = Tuple[pp.Grid, pp.Grid]
 
+__all__ = ["FractureVolume", "VanGenuchtenMualem"]
+
 
 class FractureVolume:
     """Self-made constitutive relationship for fracture volume as a function of the
