@@ -620,7 +620,7 @@ class GhostProjection:
 
 # %% Fracture pressure-related classes
 
-
+# CONSIDERED IT DEPRECATED
 class GhostFractureHydraulicHead:
     """
     Given the "real" fracture hydraulic head, compute the "ghost" fracture hydraulic head.
@@ -691,6 +691,7 @@ class GhostFractureHydraulicHead:
         return ghost_h_frac
 
 
+# CONSIDERED IT DEPRECATED
 class FractureVolume:
     def __init__(self, ghost_grid: pp.Grid, data: dict, param_key: str):
 
@@ -778,6 +779,7 @@ class FractureVolume:
                 return 0
 
 
+# CONSIDERED IT DEPRECATED
 class HydrostaticFracturePressure:
     """
     Given a volume of water, it returns the hydrostatic pressure head in the fracture. It is assumed
