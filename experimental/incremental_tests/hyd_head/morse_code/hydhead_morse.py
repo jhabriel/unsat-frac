@@ -300,10 +300,19 @@ conserv_bulk_eq.discretize(gb=gb)
 conserv_bulk_num = conserv_bulk_eq.evaluate(dof_manager=dof_manager)
 
 # %% Declare equations for the fractures
+
+# Get water volume as a function of the hydraulic head, and its first derivative
 fv = mdu.FractureVolume(gb=gb, fracture_grids=frac_list, param_key=kw)
 frac_vol_ad: pp.ad.Function = fv.fracture_volume(as_ad=True)
 vol_cap_ad: pp.ad.Function = fv.volume_capacity(as_ad=True)
 
+# Get projected ghost fracture hydraulic head onto the adjacent mortar grids
+pfh = mdu.GhostHydraulicHead(gb=gb, ghost_gb=ghost_gb, dof_manager=dof_manager)
+proj_h_frac: pp.ad.Function = pfh.proj_fra_hyd_head(as_ad=True)
+proj_h_frac(h_frac).evaluate(dof_manager)
+
+assert False
+#%%
 # SO FAR SO GOOD. CONTINUE FROM HERE!
 
 gfh = GhostFractureHydraulicHead(gb=gb, ghost_grid=g_frac_ghost)
@@ -375,6 +384,9 @@ mortar_hb_m = (
 )
 
 # Projected fracture pressure (from the ghost grid) onto the mortar grid
+# TODO: We will have to merge the ghost fracture hydraulic head with the projected ones.
+# In some sense, we will have to pass the fracture hydraulic head, and this will have to
+# return the the projected ghost fracture hydraulic head.
 ghost_proj = GhostProjection(gb_ghost=gb_ghost, g_fracture=g_frac_ghost)
 frac_to_mortar = pp.ad.Function(ghost_proj.secondary_to_mortar, name="sec_to_mortar")
 mortar_hf = frac_to_mortar(ghost_hf)
