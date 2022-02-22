@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<VTKFile type="UnstructuredGrid" version="0.1" byte_order="LittleEndian" compressor="vtkZLibDataCompressor">
+<!--This file was created by meshio v5.0.2-->
+<UnstructuredGrid>
+<Piece NumberOfPoints="8" NumberOfCells="2">
+<Points>
+<DataArray type="Float64" Name="Points" NumberOfComponents="3" format="binary">
+AQAAAACAAADAAAAAHQAAAA==eJxjYMAHHtiTJv4BhzgueZg5xIp/wBAHAD3jC5c=
+</DataArray>
+</Points>
+<Cells>
+<DataArray type="Int64" Name="connectivity" format="binary">
+AQAAAACAAABAAAAAHgAAAA==eJxjYIAAFijNCqUZoTQTlGaD0uxQmhlKAwADkAAd
+</DataArray>
+<DataArray type="Int64" Name="offsets" format="binary">
+AQAAAACAAAAQAAAADgAAAA==eJxjYYAADigNAACQAA0=
+</DataArray>
+<DataArray type="Int64" Name="types" format="binary">
+AQAAAACAAAAQAAAADgAAAA==eJzjZIAATigNAADoABM=
+</DataArray>
+</Cells>
+<CellData>
+<DataArray type="Float64" Name="var" format="binary">
+AQAAAACAAAAQAAAADwAAAA==eJxjYAADBwYoDQACkACB
+</DataArray>
+<DataArray type="Int64" Name="grid_dim" format="binary">
+AQAAAACAAAAQAAAADgAAAA==eJxjYoAAJigNAABAAAU=
+</DataArray>
+<DataArray type="Int64" Name="grid_node_number" format="binary">
+AQAAAACAAAAQAAAACwAAAA==eJxjYEAFAAAQAAE=
+</DataArray>
+<DataArray type="Int64" Name="is_mortar" format="binary">
+AQAAAACAAAAQAAAACwAAAA==eJxjYEAFAAAQAAE=
+</DataArray>
+<DataArray type="Int64" Name="mortar_side" format="binary">
+AQAAAACAAAAQAAAACwAAAA==eJxjYEAFAAAQAAE=
+</DataArray>
+<DataArray type="Int64" Name="cell_id" format="binary">
+AQAAAACAAAAQAAAADgAAAA==eJxjYIAARigNAAAYAAI=
+</DataArray>
+</CellData>
+</Piece>
+</UnstructuredGrid>
+</VTKFile>

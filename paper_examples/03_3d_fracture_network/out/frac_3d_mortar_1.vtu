@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<VTKFile type="UnstructuredGrid" version="0.1" byte_order="LittleEndian" compressor="vtkZLibDataCompressor">
+<!--This file was created by meshio v5.0.2-->
+<UnstructuredGrid>
+<Piece NumberOfPoints="76" NumberOfCells="58">
+<Points>
+<DataArray type="Float64" Name="Points" NumberOfComponents="3" format="binary">
+AQAAAACAAAAgBwAAuAAAAA==eJxjYACBB/YMBGgRn95DNjceYohv49iUV531BIe+FzjEL2CI97+brcSpfR1D/Gr606o2/zsE3YeLrp88Ewgw3S2hawwEjzHE9588AwSY/kkDg2eD3l4YPdTiy3FZ16HbGQ/sa6QOFNzsugsXf7HL5+r2dw/sJ80zZtiYfgsuPmsmJHwh4XNtwM0f6uEfn2lf+mXjXTgNE7cTlXg7adotOA0Th4ULseEzaj5+84dL+h9u5S0AlQjdqA==
+</DataArray>
+</Points>
+<Cells>
+<DataArray type="Int64" Name="connectivity" format="binary">
+AQAAAACAAACgAwAAmQAAAA==eJxdxdciAgAAQNGWhkopUZEGGhpoU5QyGv//Px7cp3teTiDwL6hDOswRPtFRHeM4J/SpTuoUp/lMZ3RWn3OO8/pCF/iSr3RRl7jM1/pGV/iWq7qm69zgO32vH7jJLd3WHX7kru7pPg/4ST/rFx7ySI/1hKc803P9ym+80Ev9zh+80mv9yRve6i/9rX/4l3d6rw/6yH+sHBEH
+</DataArray>
+<DataArray type="Int64" Name="offsets" format="binary">
+AQAAAACAAADQAQAAdgAAAA==eJwtxUEGAgEAAMAkSZIkSZIkSZIkSbKSJMlaSZIkSZIk6f86NHOZeOwv4aRTTjvjrHPOu+CiSy674qprrrvhpltuu+Oue+574KFHHnviwFPPPPfCS6+8dujIG2+9894HH33y2RdfffPdDz/98tsff/0DXQgNXw==
+</DataArray>
+<DataArray type="Int64" Name="types" format="binary">
+AQAAAACAAADQAQAAEAAAAA==eJxjZoAA5lF6WNAAojgArw==
+</DataArray>
+</Cells>
+<CellData>
+<DataArray type="Int64" Name="grid_dim" format="binary">
+AQAAAACAAADQAQAAEAAAAA==eJxjZIAAxlF6WNAAN0gAOw==
+</DataArray>
+<DataArray type="Int64" Name="grid_edge_number" format="binary">
+AQAAAACAAADQAQAALgAAAA==eJxjYYAAFjSaFQfNRiHNjoPmwEFzkkhz4aC5cdA8JNK8JNJ8JNL8FNIAt/cCUA==
+</DataArray>
+<DataArray type="Int64" Name="is_mortar" format="binary">
+AQAAAACAAADQAQAAEAAAAA==eJxjZIAAxlF6WNAAN0gAOw==
+</DataArray>
+<DataArray type="Int64" Name="mortar_side" format="binary">
+AQAAAACAAADQAQAAHAAAAA==eJxjZIAARirRTARoWtszUObTWj2x4QsARRgATw==
+</DataArray>
+<DataArray type="Int64" Name="cell_id" format="binary">
+AQAAAACAAADQAQAAZgAAAA==eJwtxbUBwgAAALDi7q7FW9zt/8cYSJYEwV/CSaecdsZZ55x3wUWXXHbFVddcd8NNt9x2x1333PfAQ4889sRTh5557oWXXnntjSPH3nrnvQ8++uSzL7765rsffvrltz/++gf55QZ2
+</DataArray>
+</CellData>
+</Piece>
+</UnstructuredGrid>
+</VTKFile>

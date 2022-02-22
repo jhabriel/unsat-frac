@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<VTKFile type="UnstructuredGrid" version="0.1" byte_order="LittleEndian" compressor="vtkZLibDataCompressor">
+<!--This file was created by meshio v5.0.2-->
+<UnstructuredGrid>
+<Piece NumberOfPoints="43" NumberOfCells="40">
+<Points>
+<DataArray type="Float64" Name="Points" NumberOfComponents="3" format="binary">
+AQAAAACAAAAIBAAA1AEAAA==eJyN0c9Lk3EcB/DHH6AosSBhaKAeBEcNJJyo6PA9LXUqul9G3kQ8+Ad4GHgZeBAGgdDFQ1AHj+K2IIiykoJaBSE5IsYgiaFzjW1ukYch+by/bh/hueRzeT/v1/M5fL/PR9P4OKFC68Djwj/9Ke5oZW9SvRPmv8yCuPab/TYSp8wT8Y4MexceKc+Lrx2z30GkxMyJ78bZu+FvYM+Kl77Qe2BvZs+I217Te1FrYU+LH4Xo/XD3sKfEt8P0AQRt7IeX54nQ7Yh0syfFk8qH4FP+6/I/fKMD1x3sB+KRz3QHtp6wJ8Rn3tOH9fOy/xBPv6KPIBpnj4lnn9Pv4kWBfU/c9IZ+D0ubVXqPik99oI8isEDfFQ9+pY+h3VGt97D4p+/08Ys976+8rHjdT7oT8w/P9AwNVnz0iD6BpxPMt+KrOfZJ9KnvH8XfqX1PYaNJnV/8IqexrvYS+6+PtzFnEH6m/pv4fivTBYuV902I22/qEXBhZ03tRXzOzHTD6ld7FF++wXk3NpbYk+LrJqYH9XPMQ/GtRs574Heyp8SjdUwvUv3MtHiyhvNePLjFnjHc14doCzN7NQ/4sHiNL3nD/GzZTwzzFS8Y5u+XvWiYr/ifwXPw+zQ7
+</DataArray>
+</Points>
+<Cells>
+<DataArray type="Int64" Name="connectivity" format="binary">
+AQAAAACAAACAAgAAaAAAAA==eJx1yMsWQmAARWFJpIRyV26J8P4P2KBjstf6z+Rb+1jWfwdowyN05MnQLvTgWfroC/69rzCANxjKyNAxvMMHTGRq6AzmsIClrNC1fMIXbGArO0P3cIBvOMoPepIz/MIFrnCTP2FrBmk=
+</DataArray>
+<DataArray type="Int64" Name="offsets" format="binary">
+AQAAAACAAABAAQAAWgAAAA==eJwtxdEGwgAAAMAkk8lMkklmZmaSZGaSyczMJNn/f00P3b3cevW3ceCtQ+8cOfbeBx+d+OSzU2fOXbh05Yuvvvnu2o1bP/x055d7Dx49efbbH3+9+AfO3gZp
+</DataArray>
+<DataArray type="Int64" Name="types" format="binary">
+AQAAAACAAABAAQAAEAAAAA==eJxjZoAA5lGaLBoATiAAeQ==
+</DataArray>
+</Cells>
+<CellData>
+<DataArray type="Float64" Name="hydraulic_head" format="binary">
+AQAAAACAAABAAQAA1QAAAA==eJyFx71LQmEAR+G3IbAhwsFBIWhqdFFCROOkZqVmftV0cYho6Q9wVHJvboiGaHLKRbJFCSFoaDBqaJOWQCeDlkC7P717Z3k41k90zRoFsP6x/Dq1C3LZkxtctGSI1J0M42vKCK2Zm9TfbKpw/CK3ME8yxlVHxhndywSTttzG/yiTnD3LHRp9ucvXh9xj/VOmOBnKNDffMsPgV+5zu2KMqWWp+OUBrlVbcqS9tt0cpx59nnO3Ps/1sr7Aw5K+wPuivsh4QV/EKEpzu44cOu/IEX9LXZQe
+</DataArray>
+<DataArray type="Float64" Name="pressure_head" format="binary">
+AQAAAACAAABAAQAADQAAAA==eJxjYBgFlAAAAUAAAQ==
+</DataArray>
+<DataArray type="Int64" Name="grid_dim" format="binary">
+AQAAAACAAABAAQAAEAAAAA==eJxjZIAAxlGaLBoAGuAAKQ==
+</DataArray>
+<DataArray type="Int64" Name="grid_node_number" format="binary">
+AQAAAACAAABAAQAAEAAAAA==eJxjZIAAxlGaLBoAGuAAKQ==
+</DataArray>
+<DataArray type="Int64" Name="is_mortar" format="binary">
+AQAAAACAAABAAQAADQAAAA==eJxjYBgFlAAAAUAAAQ==
+</DataArray>
+<DataArray type="Int64" Name="mortar_side" format="binary">
+AQAAAACAAABAAQAADQAAAA==eJxjYBgFlAAAAUAAAQ==
+</DataArray>
+<DataArray type="Int64" Name="cell_id" format="binary">
+AQAAAACAAABAAQAATgAAAA==eJwtxUkCgQAAAMBICtFqqUgb/v/DDmYuEwR/G28deufIe8dOfPDRJ6c+++LMuQuXrlz76pvvfrhx685Pv9z77cGjJ89e/PHXP69ObwMN
+</DataArray>
+</CellData>
+</Piece>
+</UnstructuredGrid>
+</VTKFile>

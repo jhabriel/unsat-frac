@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<VTKFile type="Collection" version="0.1" byte_order="LittleEndian" compressor="vtkZLibDataCompressor">
+<Collection>
+	<DataSet group="" part="" file="frac_3d_1.vtu"/>
+	<DataSet group="" part="" file="frac_3d_2.vtu"/>
+	<DataSet group="" part="" file="frac_3d_3.vtu"/>
+	<DataSet group="" part="" file="frac_3d_mortar_1.vtu"/>
+	<DataSet group="" part="" file="frac_3d_mortar_2.vtu"/>
+</Collection>
+</VTKFile>
