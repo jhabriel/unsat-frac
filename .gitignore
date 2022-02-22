@@ -29,10 +29,6 @@ bin/*
 *.DS_Store
 *.egg-info
 
-*.msh
-*.geo
-*.geo_unrolled
-#*.csv
 *.log
 *.idea/*
 *.ipe
