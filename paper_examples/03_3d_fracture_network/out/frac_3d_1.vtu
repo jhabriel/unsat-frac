@@ -2,38 +2,38 @@
 <VTKFile type="UnstructuredGrid" version="0.1" byte_order="LittleEndian" compressor="vtkZLibDataCompressor">
 <!--This file was created by meshio v5.0.2-->
 <UnstructuredGrid>
-<Piece NumberOfPoints="21" NumberOfCells="16">
+<Piece NumberOfPoints="10" NumberOfCells="8">
 <Points>
 <DataArray type="Float64" Name="Points" NumberOfComponents="3" format="binary">
-AQAAAACAAAD4AQAAoQAAAA==eJxjYACBB/YMBGgRn95DNjceYohv49iUV531BIe+FzjEL2CI97+brcSpfR1D/Gr606o2/zsE3YdOx2fal37ZeBdOw8TtRCXeTpp2C07DxNPA4BqcJmS+47KuQ7czHtjXSB0ouNmFMP/FLp+r2989sJ80z5hhYzrC/FkzQeAh0ebD6PrJEH3o4hK6xkDwGEN8/8kzQIAZHxB7n8H5AFKFgPY=
+AQAAAACAAADwAAAAVAAAAA==eJxjYACBB/YMKPQFNP4D+72vVwHBLQxx09Mg8UcY4hD6BZw/EwxeYpgPEy/uTQOCaxjiz6XOnjlz5g6G+IoDIPohhnjwA6DyM09w2PvCHgAFgk4x
 </DataArray>
 </Points>
 <Cells>
 <DataArray type="Int64" Name="connectivity" format="binary">
-AQAAAACAAAAAAQAANwAAAA==eJxdxTECQDAQAMFDCIIQ+f9bFbbaaSbiN+hRT5x41ovOvPKmd1344FNfuvLNj2761Z0/cDABRQ==
+AQAAAACAAACAAAAAJAAAAA==eJxjYIAARjSaCY1mhtIsUJoVjWZDo9nRaA40mhNKAwAN2ABL
 </DataArray>
 <DataArray type="Int64" Name="offsets" format="binary">
-AQAAAACAAACAAAAAMAAAAA==eJwtxdEGwCAAAMBMMkmSzEyy///KHrp7uSsc0cm3s4urm7uHH7/+PL38ewMzgAER
+AQAAAACAAABAAAAAHgAAAA==eJxjYoAAFijNBqU5oDQXlOaB0nxQWgBKAwAHwABJ
 </DataArray>
 <DataArray type="Int64" Name="types" format="binary">
-AQAAAACAAACAAAAADgAAAA==eJxjZoAA5gGiAQ1AADE=
+AQAAAACAAABAAAAADgAAAA==eJxjZoAAZjJpAAOgABk=
 </DataArray>
 </Cells>
 <CellData>
 <DataArray type="Int64" Name="grid_dim" format="binary">
-AQAAAACAAACAAAAADgAAAA==eJxjZIAAxgGiAQTAABE=
+AQAAAACAAABAAAAADgAAAA==eJxjZIAARjJpAAFgAAk=
 </DataArray>
 <DataArray type="Int64" Name="grid_node_number" format="binary">
-AQAAAACAAACAAAAAGQAAAA==eJxjZYAAVjSaDQfNjoPmwEFzEqABG4AAcw==
+AQAAAACAAABAAAAAEQAAAA==eJxjZYAAVjSajUgaAAZYAC4=
 </DataArray>
 <DataArray type="Int64" Name="is_mortar" format="binary">
-AQAAAACAAACAAAAADAAAAA==eJxjYBhYAAAAgAAB
+AQAAAACAAABAAAAADAAAAA==eJxjYKAMAAAAQAAB
 </DataArray>
 <DataArray type="Int64" Name="mortar_side" format="binary">
-AQAAAACAAACAAAAADAAAAA==eJxjYBhYAAAAgAAB
+AQAAAACAAABAAAAADAAAAA==eJxjYKAMAAAAQAAB
 </DataArray>
 <DataArray type="Int64" Name="cell_id" format="binary">
-AQAAAACAAACAAAAAKgAAAA==eJwtxTkCwBAAADClbuX/v+0gWRLC9Tg6+XV2cXVz9/D08uft4x8VwAB5
+AQAAAACAAABAAAAAHgAAAA==eJxjYIAARijNBKWZoTQLlGaF0mxQmh1KAwAC4AAd
 </DataArray>
 </CellData>
 </Piece>
