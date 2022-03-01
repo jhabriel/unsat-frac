@@ -8,10 +8,7 @@ import porepy as pp
 import numpy as np
 import scipy.sparse as sps
 
-from porepy.numerics.ad.operators import Operator, ApplicableOperator
-from porepy.numerics.ad.functions import heaviside
-
-from typing import Callable, Optional, Tuple, List, Any, Union, NewType, Literal
+from typing import Tuple, List, Union
 
 # Typing abbreviations
 Scalar = Union[int, float]
@@ -209,17 +206,32 @@ class ParameterUpdate:
         edges_list: List[Tuple[pp.Grid, pp.Grid]],
     ):
         """
-        Updates the state of mortar cells for a given set of edges
+        Update conductivity state of mortar cells for a given list of edges
         """
 
-        for e in edges_list:
+        # Number of mortar cells per interface
+        num_mortar_cells = [
+            self._gb.edge_props(e)["mortar_grid"].num_cells for e in edges_list
+        ]
+
+        # Cumulative sum, prepare for slicing
+        cum_sum = list(np.cumsum(num_mortar_cells))
+        cum_sum.insert(0, 0)
+
+        # Loop and replace the paramater "is_conductive" on each mortar grid
+        for idx, e in enumerate(edges_list):
             d = self._gb.edge_props(e)
-            d[pp.PARAMETERS][self._param_key]["is_conductive"] = is_mortar_conductive
+            base = cum_sum[idx]
+            roof = cum_sum[idx + 1]
+            d[pp.PARAMETERS][self._param_key]["is_conductive"] = (
+                is_mortar_conductive[base:roof]
+            )
 
     def update_time_step(self, dt: Union[int, float]):
         """
         Updates the state of the time step in the bulk dictionary
         """
+
         max_dim = self._gb.dim_max()
         g_bulk = self._gb.grids_of_dimension(max_dim)[0]
         d_bulk = self._gb.node_props(g_bulk)
