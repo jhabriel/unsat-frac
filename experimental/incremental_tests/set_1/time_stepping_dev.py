@@ -37,10 +37,7 @@ interruption in the water recharge at the top, or alternative, a sudden evaporat
 # %% Import modules
 import porepy as pp
 import numpy as np
-import scipy.sparse.linalg as spla
-import scipy.sparse as sps
 import matplotlib.pyplot as plt
-from matplotlib.pyplot import spy as sparsity
 
 plt.rcParams.update(
     {
@@ -52,20 +49,8 @@ plt.rcParams.update(
     }
 )
 
-from porepy.numerics.ad.grid_operators import DirBC
-from mdunsat.ad_utils.ad_utils import (
-    get_conductive_mortar_cells,
-    is_water_volume_negative,
-    set_iterate_to_state,
-    eval_ad_operator,
-    GhostProjection,
-    HydrostaticFracturePressure,
-    InterfaceUpwindAd,
-    UpwindFluxBasedAd,
-    vanGenuchten,
+from mdunsat.ad_utils import (
     TimeSteppingControl,
-    ParameterUpdate,
-    ParameterScalar,
 )
 
 # %% Make grid
