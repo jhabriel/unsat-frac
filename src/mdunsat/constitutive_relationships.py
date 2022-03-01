@@ -114,11 +114,13 @@ class FractureVolume:
         #
         # Note that this relationship is only valid for water in hydrostatic equilibrium
 
+        pressure_threshold = -22.1
         if isinstance(hydraulic_head, pp.ad.Ad_array):
             # We need to transform the aperture into a diagonal matrix to be able to perform
             # the multiplication and thus avoid broadcasting errors
             aper = sps.spdiags(self._aperture, 0, self._N, self._N)
-            water_volume: pp.ad.Ad_array = aper * hydraulic_head - aper * self._datum
+            water_volume: pp.ad.Ad_array = aper * hydraulic_head - aper * (self._datum +
+                                                                           pressure_threshold)
             # If the calculated water volume is greater than the fracture volume,
             # use the fracture volume instead
             for idx, _ in enumerate(self._grids):
@@ -127,7 +129,8 @@ class FractureVolume:
         else:
             # Here, we don't need to do anything, numpy will take care of correctly
             # broadcasting everything for us
-            water_volume: np.ndarray = self._aperture * (hydraulic_head - self._datum)
+            water_volume: np.ndarray = self._aperture * (hydraulic_head - (self._datum +
+                                                         pressure_threshold))
             # If the calculated water volume is greater than the fracture volume,
             # use the fracture volume instead
             for idx, _ in enumerate(self._grids):
