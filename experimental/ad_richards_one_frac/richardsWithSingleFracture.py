@@ -15,10 +15,9 @@ Boundary conditions: Mixed. Dirichlet top and bottom. Neumann left and right.
 import porepy as pp
 import numpy as np
 import scipy.sparse.linalg as spla
-from matplotlib.pyplot import spy as sparsity
 
 from porepy.numerics.ad.grid_operators import DirBC
-from mdunsat.ad_utils.ad_utils import (
+from mdunsat.ad_utils import (
     ArithmeticAverageAd,
     UpwindFluxBasedAd,
     vanGenuchten,
