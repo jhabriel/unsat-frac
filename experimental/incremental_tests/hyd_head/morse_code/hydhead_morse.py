@@ -4,22 +4,13 @@ import numpy as np
 import scipy.sparse.linalg as spla
 import scipy.sparse as sps
 import matplotlib.pyplot as plt
-from typing import List
-from matplotlib.pyplot import spy as sparsity
 import mdunsat as mdu
 
-from mdunsat.ad_utils.ad_utils import (
-    SoilWaterRetentionCurves,
+from mdunsat.ad_utils import (
     get_conductive_mortars,
     is_water_volume_negative,
     set_iterate_as_state,
-    GhostProjection,
-    GhostFractureHydraulicHead,
-    FractureVolume,
-    InterfaceUpwindAd,
-    UpwindFluxBasedAd,
     ParameterUpdate,
-    ParameterScalar,
 )
 
 plt.rcParams.update(
@@ -33,7 +24,7 @@ plt.rcParams.update(
 )
 
 # %% Global simulation parameters
-blocking_block: bool = False
+blocking_block: bool = True
 linearization: str = "newton"
 
 # %% Make grid
@@ -303,36 +294,20 @@ conserv_bulk_num = conserv_bulk_eq.evaluate(dof_manager=dof_manager)
 
 # Get water volume as a function of the hydraulic head, and its first derivative
 fv = mdu.FractureVolume(gb=gb, fracture_grids=frac_list, param_key=kw)
-frac_vol_ad: pp.ad.Function = fv.fracture_volume(as_ad=True)
+vol_ad: pp.ad.Function = fv.fracture_volume(as_ad=True)
 vol_cap_ad: pp.ad.Function = fv.volume_capacity(as_ad=True)
-
-# Get projected ghost fracture hydraulic head onto the adjacent mortar grids
-pfh = mdu.GhostHydraulicHead(gb=gb, ghost_gb=ghost_gb, dof_manager=dof_manager)
-proj_h_frac: pp.ad.Function = pfh.proj_fra_hyd_head(as_ad=True)
-proj_h_frac(h_frac).evaluate(dof_manager)
-
-assert False
-#%%
-# SO FAR SO GOOD. CONTINUE FROM HERE!
-
-gfh = GhostFractureHydraulicHead(gb=gb, ghost_grid=g_frac_ghost)
-ghost_hf_ad = pp.ad.Function(
-    gfh.get_ghost_hyd_head, name="Ghost fracture hydraulic head func"
-)
-ghost_hf = ghost_hf_ad(h_frac)
-
 
 linearization = "newton"
 if linearization == "newton":
     accum_frac_active = vol_ad(h_frac)
-    accum_frac_inactive = vol_ad(hf_n) * (-1)
+    accum_frac_inactive = vol_ad(h_frac_n) * (-1)
 elif linearization == "modified_picard":
-    accum_frac_active = h_frac * vol_cap_ad(hf_m)
-    accum_frac_inactive = vol_ad(hf_m) - vol_cap_ad(hf_m) * hf_m - vol_ad(hf_n)
+    accum_frac_active = h_frac * vol_cap_ad(h_frac_m)
+    accum_frac_inactive = vol_ad(h_frac_m) - vol_cap_ad(h_frac_m) * h_frac_m - vol_ad(h_frac_n)
 elif linearization == "l_scheme":
     L = 0.015
     accum_frac_active = L * h_frac
-    accum_frac_inactive = vol_ad(hf_m) - L * hf_m - vol_ad(hf_n)
+    accum_frac_inactive = vol_ad(h_frac_m) - L * h_frac_m - vol_ad(h_frac_n)
 else:
     raise NotImplementedError(
         "Linearization scheme not implemented. Use 'newton', "
@@ -340,12 +315,15 @@ else:
     )
 
 # Conservation equation in the fracture: This is a water volume balance
-aperture_ad = ParameterScalar(kw, "aperture", grid=g_frac)
-# vol_frac = vol_ad(h_frac)
-# vol_frac_n = vol_ad(hf_n)
-sources_from_mortar = frac_cell_rest * projections.mortar_to_secondary_int * lmbda
-# conserv_frac_eq = vol_frac - dt_ad * aperture_ad * sources_from_mortar - vol_frac_n
+
+# Concatenate apertures from relevant grids, and converted into a pp.ad.Matrix
+aperture = np.array([d[pp.PARAMETERS][kw]["aperture"] for g, d in gb if g.dim == gfo.dim - 1])
+aperture_ad = pp.ad.Matrix(sps.spdiags(aperture, 0, aperture.size, aperture.size))
+# Retrieve sources from mortar
+sources_from_mortar = frac_cell_rest * proj.mortar_to_secondary_int * lmbda
+# Accumulation terms
 accum_frac = accum_frac_active + accum_frac_inactive
+# Declare conservation equation
 conserv_frac_eq = accum_frac - dt_ad * aperture_ad * sources_from_mortar
 
 # Evaluate and discretize
@@ -353,53 +331,49 @@ conserv_frac_eq.discretize(gb=gb)
 conserva_frac_num = conserv_frac_eq.evaluate(dof_manager=dof_manager)
 
 # %% Declare equations for the interface
-mpfa_global = pp.ad.MpfaAd(kw, [g_bulk, g_frac])
+mpfa_global = pp.ad.MpfaAd(kw, grid_list)
 robin = pp.ad.RobinCouplingAd(kw, edge_list)
 
 # Projected bulk pressure traces onto the mortar grid
-mortar_hb = (
-    projections.primary_to_mortar_avg
+proj_tr_h_bulk = (
+    proj.primary_to_mortar_avg
     * bulk_face_prol
     * mpfa_bulk.bound_pressure_cell
     * h_bulk
-    + projections.primary_to_mortar_avg
+    + proj.primary_to_mortar_avg
     * bulk_face_prol
     * mpfa_bulk.bound_pressure_face
     * bulk_face_rest
-    * projections.mortar_to_primary_int
+    * proj.mortar_to_primary_int
     * lmbda
 )
 
-mortar_hb_m = (
-    projections.primary_to_mortar_avg
+proj_tr_h_bulk_m = (
+    proj.primary_to_mortar_avg
     * bulk_face_prol
     * mpfa_bulk.bound_pressure_cell
-    * hb_m
-    + projections.primary_to_mortar_avg
+    * h_bulk_m
+    + proj.primary_to_mortar_avg
     * bulk_face_prol
     * mpfa_bulk.bound_pressure_face
     * bulk_face_rest
-    * projections.mortar_to_primary_int
+    * proj.mortar_to_primary_int
     * lmbda_m
 )
 
-# Projected fracture pressure (from the ghost grid) onto the mortar grid
-# TODO: We will have to merge the ghost fracture hydraulic head with the projected ones.
-# In some sense, we will have to pass the fracture hydraulic head, and this will have to
-# return the the projected ghost fracture hydraulic head.
-ghost_proj = GhostProjection(gb_ghost=gb_ghost, g_fracture=g_frac_ghost)
-frac_to_mortar = pp.ad.Function(ghost_proj.secondary_to_mortar, name="sec_to_mortar")
-mortar_hf = frac_to_mortar(ghost_hf)
+# Get projected ghost fracture hydraulic head onto the adjacent mortar grids
+pfh = mdu.GhostHydraulicHead(gb=gb, ghost_gb=ghost_gb)
+frac_to_mortar: pp.ad.Function = pfh.proj_fra_hyd_head(as_ad=True)
+proj_h_frac = frac_to_mortar(h_frac)
 
+# FIXME: Get rid of this and change only the normal conductivity...
 # Array parameter that keeps track of conductive (1) and blocking (0) mortar cells
 # Note that if it is blocking, the whole discrete equation is removed for that mortar cell
 is_conductive = pp.ad.ParameterArray(kw, "is_conductive", edges=edge_list)
 
 # Interface flux
-mortar_flux = robin.mortar_scaling * (mortar_hb - mortar_hf) * is_conductive
+mortar_flux = robin.mortar_scaling * (proj_tr_h_bulk - proj_h_frac) * is_conductive
 interface_flux_eq = mortar_flux + robin.mortar_discr * lmbda
-
-# interface_flux_eval = pp.ad.Expression(interface_flux_eq, dof_manager)
 interface_flux_eq.discretize(gb=gb)
 interface_flux_num = interface_flux_eq.evaluate(dof_manager=dof_manager)
 
@@ -409,30 +383,31 @@ equation_manager.equations += eqs
 equation_manager.discretize(gb)
 
 # %% Initialize exporter. Note that we use the ghost grid rather than the physical one
-pp.set_state(
-    d_bulk_ghost,
-    state={
-        node_var: d_bulk[pp.STATE][node_var],
-        "pressure_head": d_bulk[pp.STATE][node_var] - z_bulk,
-    },
-)
-pp.set_state(
-    d_frac_ghost,
-    state={
-        node_var: d_frac[pp.PARAMETERS][kw]["datum"] * np.ones(g_frac_ghost.num_cells),
-        "pressure_head": d_frac[pp.STATE][node_var] - z_frac_ghost,
-    },
-)
-water_table = [d_frac[pp.STATE][node_var][0]]
-water_vol = [fracvol.fracture_volume(d_frac[pp.STATE][node_var])[0]]
-exporter_ghost = pp.Exporter(gb_ghost, "out", "twodim_simplex_vert")
-exporter_ghost.write_vtu([node_var, "pressure_head"], time_step=0)
+# pp.set_state(
+#     d_bulk_ghost,
+#     state={
+#         node_var: d_bulk[pp.STATE][node_var],
+#         "pressure_head": d_bulk[pp.STATE][node_var] - z_bulk,
+#     },
+# )
+# pp.set_state(
+#     d_frac_ghost,
+#     state={
+#         node_var: d_frac[pp.PARAMETERS][kw]["datum"] * np.ones(g_frac_ghost.num_cells),
+#         "pressure_head": d_frac[pp.STATE][node_var] - z_frac_ghost,
+#     },
+# )
+# water_table = [d_frac[pp.STATE][node_var][0]]
+# water_vol = [fracvol.fracture_volume(d_frac[pp.STATE][node_var])[0]]
+# exporter_ghost = pp.Exporter(gb_ghost, "out", "twodim_simplex_vert")
+# exporter_ghost.write_vtu([node_var, "pressure_head"], time_step=0)
 
 # %% Time loop
 total_iteration_counter: int = 0
 iters: list = []
 abs_tol: float = 1e-5
-is_mortar_conductive: np.ndarray = np.zeros(gb.num_mortar_cells(), dtype=np.int8)
+n_mort = sum([d["mortar_grid"].num_cells for _, d in gb.edges() if d["mortar_grid"].dim == 1])
+is_mortar_conductive: np.ndarray = np.zeros(n_mort, dtype=np.int8)
 control_faces: np.ndarray = is_mortar_conductive
 
 # Time loop
@@ -483,7 +458,7 @@ while tsc.time < tsc.time_final:
         continue
 
     # Recompute solution if negative volume is encountered
-    if is_water_volume_negative(gb, node_var, [g_frac]):
+    if is_water_volume_negative(gb, node_var, fracture_list=frac_list):
         tsc.next_time_step(recompute_solution=True, iterations=iteration_counter - 1)
         param_update.update_time_step(tsc.dt)
         print(f"Encountered negative volume. Reducing dt and recomputing solution.")
@@ -492,7 +467,7 @@ while tsc.time < tsc.time_final:
 
     # Recompute solution is capillary barrier is overcome. Note that dt remains the same
     is_mortar_conductive = get_conductive_mortars(
-        gb, dof_manager, kw, mortar_hb, mortar_hf, edge_list
+        gb, dof_manager, kw, proj_tr_h_bulk, proj_h_frac, edge_list
     )
     if control_faces.sum() == 0 and is_mortar_conductive.sum() > 0:
         param_update.update_mortar_conductivity_state(is_mortar_conductive, edge_list)
@@ -519,40 +494,40 @@ while tsc.time < tsc.time_final:
     # Succesful convergence
     tsc.next_time_step(recompute_solution=False, iterations=iteration_counter - 1)
     param_update.update_time_step(tsc.dt)
-    print(f"Fracture water table height: {d_frac[pp.STATE][node_var][0]}")
-    print(
-        f"Fracture water volume: {fracvol.fracture_volume(d_frac[pp.STATE][node_var])[0]}"
-    )
-    water_table.append(d_frac[pp.STATE][node_var][0])
-    water_vol.append(fracvol.fracture_volume(d_frac[pp.STATE][node_var]))
+    #print(f"Fracture water table height: {d_frac[pp.STATE][node_var][0]}")
+    # print(
+    #     f"Fracture water volume: {fracvol.fracture_volume(d_frac[pp.STATE][node_var])[0]}"
+    # )
+    # water_table.append(d_frac[pp.STATE][node_var][0])
+    # water_vol.append(fracvol.fracture_volume(d_frac[pp.STATE][node_var]))
     dof_manager.distribute_variable(solution, additive=False)
     print()
 
-    # Export to ParaView
-    pp.set_state(
-        data=d_bulk_ghost,
-        state={
-            node_var: d_bulk[pp.STATE][node_var],
-            "pressure_head": d_bulk[pp.STATE][node_var] - z_bulk,
-        },
-    )
-    pp.set_state(
-        data=d_frac_ghost,
-        state={
-            node_var: gfh.get_ghost_hyd_head(d_frac[pp.STATE][node_var]),
-            "pressure_head": gfh.get_ghost_hyd_head(d_frac[pp.STATE][node_var])
-            - z_frac_ghost,
-        },
-    )
-    if tsc.time in tsc.schedule:
-        export_counter += 1
-        exporter_ghost.write_vtu([node_var, "pressure_head"], time_step=export_counter)
+    # # Export to ParaView
+    # pp.set_state(
+    #     data=d_bulk_ghost,
+    #     state={
+    #         node_var: d_bulk[pp.STATE][node_var],
+    #         "pressure_head": d_bulk[pp.STATE][node_var] - z_bulk,
+    #     },
+    # )
+    # pp.set_state(
+    #     data=d_frac_ghost,
+    #     state={
+    #         node_var: gfh.get_ghost_hyd_head(d_frac[pp.STATE][node_var]),
+    #         "pressure_head": gfh.get_ghost_hyd_head(d_frac[pp.STATE][node_var])
+    #         - z_frac_ghost,
+    #     },
+    # )
+    # if tsc.time in tsc.schedule:
+    #     export_counter += 1
+    #     exporter_ghost.write_vtu([node_var, "pressure_head"], time_step=export_counter)
 
 # %% Plotting
-plot_hydraulic_head = True
-plot_volume = True
-plot_dt = True
-plot_iters = True
+plot_hydraulic_head = False
+plot_volume = False
+plot_dt = False
+plot_iters = False
 
 if plot_volume:
     fig, ax = plt.subplots(1, 1)
