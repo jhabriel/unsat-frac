@@ -105,6 +105,8 @@ class GhostHydraulicHead:
     # Private methods
     def _proj_frac_hyd_head(self, h_frac: Union[AdArray, NonAd]) -> [AdArray, NonAd]:
 
+        pressure_threshold = -22.1  # this will have to be retrieved from a data dict
+
         if isinstance(h_frac, pp.ad.Ad_array):
             # Broadcast the fracture hydraulic head. The resulting ad operator will consist of
             # concatanated broadcasted hydraulic heads. The size of the operator is given by
@@ -114,24 +116,21 @@ class GhostHydraulicHead:
 
             # This chunk might be helpful if we're doing things the non-hacky way
             # We need to correct the values of the hydraulic head for the dry parts of
-            # the fracture domain. Essentially, in these cells, the pressure head = 0,
-            # since there is only air. Therefore h = 0 + z_cc = z_cc for the dry cells.
-            # Note that by multiplying by the wet and dry matrices the Jacobian
-            # is 0 for the dry cells. This could indeed be problematic. If this is the case,
-            # we will have to somehow manually change the Jacobian and fill with ones the
-            # relevant columns
+            # the fracture domain. Essentially, in these cells, the pressure head =
+            # pressure_threshold, since there is only air. Therefore h = h_dry = psi_L + z_cc
+            # for the dry cells. Note that by multiplying by the wet and dry matrices the
+            # Jacobian is 0 for the dry cells. This could indeed be problematic. If this is
+            # the case, we will have to somehow manually change the Jacobian
+            # and fill with ones the relevant columns
             # wet_mat, dry_mat = self._get_wet_and_dry_cells(hfrac_broad)
-            # hfrac: pp.ad.Operator = wet_mat * hfrac_broad + dry_mat * self._cc
+            # hfrac: pp.ad.Operator = wet_mat * hfrac_broad + dry_mat * h_dry
 
-            # Now, we need to correct the values of the hydraulic head for the dry parts of
-            # the fracture domain. Essentially, in these cells, the pressure head = 0,
-            # since there is only air. Therefore h = 0 + z_cc = z_cc for the dry cells.
             # WARNING: Note that we are only changing the "values" of the hydraulic head
             # ad_Array, but its Jacobian remains unchanged. Not sure about the repercusion
             # that this might have. But if we need to do things correctly, we should apply
             # something on the lines of the chunk from above :)
-            dry_cells: np.ndarray = hfrac_broad.val < self._cc
-            hfrac_broad.val[dry_cells] = self._cc[dry_cells]
+            dry_cells: np.ndarray = hfrac_broad.val < (self._cc + pressure_threshold)
+            hfrac_broad.val[dry_cells] = self._cc[dry_cells] + pressure_threshold
 
             # Now we are ready to project the hydraulic head onto the mortar grids. To this
             # aim, we first need the relevant subdomain projections and mortar projections.
@@ -150,8 +149,8 @@ class GhostHydraulicHead:
             # Check proper doc above
             broad_matrix: sps.lil_matrix = self._get_broadcasting_matrix()
             hfrac_broad: np.ndarray = broad_matrix * h_frac
-            dry_cells = hfrac_broad < self._cc
-            hfrac_broad[dry_cells] = self._cc[dry_cells]
+            dry_cells = hfrac_broad < (self._cc + pressure_threshold)
+            hfrac_broad[dry_cells] = self._cc[dry_cells] + pressure_threshold
             cell_prolongation = self._ghost_subdomain_proj.cell_prolongation(
                 grids=self._ghost_frac_grids
             ).parse(gb=self._ghost_gb)
