@@ -8,13 +8,14 @@ phys_dims = np.array([1, 1])
 gb = pp.meshing.cart_grid([fracs], nx=nx, physdims=phys_dims)
 
 #%% Set states
-var_name = "var"
+node_var = "node_var"
+mortar_var = "mortar_var"
 for g, d in gb:
-    pp.set_state(d, state={var_name: g.dim * np.ones(g.num_cells)})
+    pp.set_state(d, state={node_var: g.dim * np.ones(g.num_cells)})
 for e, d in gb.edges():
     mg = d["mortar_grid"]
-    pp.set_state(d, state={var_name: np.zeros(mg.num_cells)})
+    pp.set_state(d, state={mortar_var: np.zeros(mg.num_cells)})
 
 #%% Export
 save = pp.Exporter(gb, file_name="out")
-save.write_vtu([var_name])
+save.write_vtu([node_var, mortar_var])
