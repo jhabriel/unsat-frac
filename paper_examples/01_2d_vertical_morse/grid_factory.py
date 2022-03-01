@@ -56,8 +56,12 @@ class GridGenerator:
             gb_ghost = network.mesh(self.mesh_args, constraints=self.constraints)
 
         # Purge unwanted zero-dimensional subdomains
-        gb_ghost.eliminate_node(gb_ghost.grids_of_dimension(0)[0])
-        gb_ghost.eliminate_node(gb_ghost.grids_of_dimension(0)[0])
+        num_unwanted_nodes = 2
+        for num_nodes in range(num_unwanted_nodes):
+            g_to_delete = gb_ghost.grids_of_dimension(0)[-1]
+            node_number_g_to_delete = gb_ghost.node_props(g_to_delete)["node_number"]
+            gb_ghost.eliminate_node(g_to_delete)
+            gb_ghost.update_node_ordering(node_number_g_to_delete)
 
         # Retrieve the 1D fractures
 
@@ -93,6 +97,9 @@ class GridGenerator:
             grid.nodes = node
             grid.compute_geometry()
 
+        # Add zero-dimensional grid
+        mono_fracs.append(gb_ghost.grids_of_dimension(0)[0])
+
         # We can now create our physical grid bucket, i.e., the one that will be used in the
         # simulation. Note that making a copy of the ghost grid bucket as in gb_ghost.copy()
         # does NOT work because this is not a hard copy of the object. Thus, we need to
@@ -103,11 +110,14 @@ class GridGenerator:
             gb = network.mesh(self.mesh_args, constraints=self.constraints)
 
         # Purge unwanted zero-dimensional subdomains
-        gb.eliminate_node(gb.grids_of_dimension(0)[0])
-        gb.eliminate_node(gb.grids_of_dimension(0)[0])
+        for num_nodes in range(num_unwanted_nodes):
+            g_to_delete = gb.grids_of_dimension(0)[-1]
+            node_number_g_to_delete = gb.node_props(g_to_delete)["node_number"]
+            gb.eliminate_node(g_to_delete)
+            gb.update_node_ordering(node_number_g_to_delete)
 
-        # Retrive the list of fracture grids
-        frac_list = [g for g, _ in gb if g.dim == 1]
+        # Retrieve the list of fracture grids
+        frac_list = [g for g, _ in gb if g.dim <= 1]
 
         # Now, we have to create a dictionary that keeps track of the mapping between the
         # old and new grids. That is, the g_map used by the replace_grids() method from the
@@ -122,9 +132,23 @@ class GridGenerator:
 
         return gb, gb_ghost
 
-    # List getters
+    # Beginning of methods related to grid and edge lists
     @staticmethod
-    def get_bulk_list(gb: pp.GridBucket) -> List[pp.Grid]:
+    def grid_list(gb: pp.GridBucket) -> List[pp.Grid]:
+        """
+        Returns the list of grids
+
+        Parameters:
+            gb (pp.GridBucket): Mixed-dimensional grid bucket
+
+        Returns
+            (List of Grids): Containing the grids.
+        """
+
+        return [g for g, _ in gb]
+
+    @staticmethod
+    def bulk_grid_list(gb: pp.GridBucket) -> List[pp.Grid]:
         """Returns the list of bulk grids.
 
         Parameters:
@@ -137,7 +161,7 @@ class GridGenerator:
         return [g for g, _ in gb if g.dim == gb.dim_max()]
 
     @staticmethod
-    def get_fracture_list(gb: pp.GridBucket) -> List[pp.Grid]:
+    def fracture_grid_list(gb: pp.GridBucket) -> List[pp.Grid]:
         """Returns the list of fracture grids.
 
         Parameters:
@@ -150,21 +174,20 @@ class GridGenerator:
         return [g for g, _ in gb if g.dim == gb.dim_max() - 1]
 
     @staticmethod
-    def get_grid_list(gb: pp.GridBucket) -> List[pp.Grid]:
-        """
-        Returns the list of grids of dimensionality >= (dim - 1)
+    def local_fracture_network__grid_list(gb: pp.GridBucket) -> List[pp.Grid]:
+        """Returns the list of lower-dimensional grids, including intersections
 
         Parameters:
             gb (pp.GridBucket): Mixed-dimensional grid bucket
 
         Returns
-            (List of Grids): Containing the grids.
+            (List of Grids): Containing the grids of lower-dimensional grids
         """
 
-        return [g for g, _ in gb]
+        return [g for g, _ in gb if g.dim < gb.dim_max()]
 
     @staticmethod
-    def get_edge_list(gb: pp.GridBucket) -> List[Edge]:
+    def edge_list(gb: pp.GridBucket) -> List[Edge]:
         """Returns the list of edges.
 
         Parameters:
@@ -175,3 +198,16 @@ class GridGenerator:
         """
 
         return [e for e, _ in gb.edges()]
+
+    @staticmethod
+    def fracture_edge_list(gb: pp.GridBucket) -> List[Edge]:
+        """Returns the list of edges between the bulk and fractures (without frac intersect.)
+
+        Parameters:
+            gb (pp.GridBucket): Mixed-dimensional grid bucket
+
+        Returns:
+            (List of Edges): Containing the edges.
+        """
+
+        return [e for e, d in gb.edges() if d["mortar_grid"].dim == gb.dim_max() - 1]
