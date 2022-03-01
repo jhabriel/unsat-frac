@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<VTKFile type="UnstructuredGrid" version="0.1" byte_order="LittleEndian" compressor="vtkZLibDataCompressor">
+<!--This file was created by meshio v5.3.0-->
+<UnstructuredGrid>
+<Piece NumberOfPoints="11" NumberOfCells="8">
+<Points>
+<DataArray type="Float64" Name="Points" NumberOfComponents="3" format="binary">
+AQAAAACAAAAIAQAAeAAAAA==eJxjYAABTwcwxaDicOjjfyD4vIcBKn70Fohv7LCfA8R/BxeftBEkbuvwyRDEfwIX/7QbJO7s4HAdxL8CFz97DSTuAbHna9UumDiE9nP4YQFWb0NIvEQYSDUEOvhkge1FUx/iUCMDdidx4g1hDnZ8IMYXGwBXN0AP
+</DataArray>
+</Points>
+<Cells>
+<DataArray type="Int64" Name="connectivity" format="binary">
+AQAAAACAAACAAAAAJgAAAA==eJxjYIAARjSaCY1mRqNZ0GhWKM0GpdnRaA4ozQmluaA0AAzgAEk=
+</DataArray>
+<DataArray type="Int64" Name="offsets" format="binary">
+AQAAAACAAABAAAAAHgAAAA==eJxjYoAAFijNBqU5oDQXlOaB0nxQWgBKAwAHwABJ
+</DataArray>
+<DataArray type="Int64" Name="types" format="binary">
+AQAAAACAAABAAAAADgAAAA==eJxjZoAAZjJpAAOgABk=
+</DataArray>
+</Cells>
+<CellData>
+<DataArray type="Float64" Name="hydraulic_head" format="binary">
+AQAAAACAAABAAAAAEAAAAA==eJxjYAABFQcGMmkAXAADIQ==
+</DataArray>
+<DataArray type="Float64" Name="pressure_head" format="binary">
+AQAAAACAAABAAAAADAAAAA==eJxjYKAMAAAAQAAB
+</DataArray>
+<DataArray type="Int64" Name="grid_dim" format="binary">
+AQAAAACAAABAAAAADgAAAA==eJxjZIAARjJpAAFgAAk=
+</DataArray>
+<DataArray type="Int64" Name="grid_node_number" format="binary">
+AQAAAACAAABAAAAADgAAAA==eJxjZIAARjJpAAFgAAk=
+</DataArray>
+<DataArray type="Int64" Name="is_mortar" format="binary">
+AQAAAACAAABAAAAADAAAAA==eJxjYKAMAAAAQAAB
+</DataArray>
+<DataArray type="Int64" Name="mortar_side" format="binary">
+AQAAAACAAABAAAAADAAAAA==eJxjYKAMAAAAQAAB
+</DataArray>
+<DataArray type="Int64" Name="cell_id" format="binary">
+AQAAAACAAABAAAAAHgAAAA==eJxjYIAARijNBKWZoTQLlGaF0mxQmh1KAwAC4AAd
+</DataArray>
+</CellData>
+</Piece>
+</UnstructuredGrid>
+</VTKFile>
