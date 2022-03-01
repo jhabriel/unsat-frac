@@ -2,23 +2,23 @@
 import porepy as pp
 import numpy as np
 import scipy.sparse.linalg as spla
-import scipy.sparse as sps
 import matplotlib.pyplot as plt
-from matplotlib.pyplot import spy as sparsity
+import mdunsat as mdu
 
-from mdunsat.ad_utils.ad_utils import (
-    SoilWaterRetentionCurves,
+from mdunsat.ad_utils import (
     get_conductive_mortars,
     is_water_volume_negative,
     set_iterate_as_state,
     GhostProjection,
     GhostFractureHydraulicHead,
-    FractureVolume,
-    InterfaceUpwindAd,
+    #FractureVolume,
     UpwindFluxBasedAd,
     ParameterUpdate,
     ParameterScalar,
 )
+
+from mdunsat.constitutive_relationships import FractureVolume
+
 
 plt.rcParams.update(
     {
@@ -50,8 +50,8 @@ else:
         "vertfrac_embedded_80cm.csv", domain=domain
     )
 # Mesh arguments
-target_h_bound: float = 5.0
-target_h_frac: float = 5.0
+target_h_bound: float = 5
+target_h_frac: float = 5
 mesh_args: dict = {"mesh_size_frac": target_h_frac, "mesh_size_bound": target_h_bound}
 
 # Create the physical fracture as a one-dimensional grid with one cell and length physdims
@@ -67,6 +67,10 @@ if blocking_block:
     gb_ghost: pp.GridBucket = network_2d.mesh(mesh_args, constraints=[1, 2, 3, 4])
 else:
     gb_ghost: pp.GridBucket = network_2d.mesh(mesh_args)
+
+# Eliminate artificial 0D grids
+gb_ghost.eliminate_node(gb_ghost.grids_of_dimension(0)[0])
+gb_ghost.eliminate_node(gb_ghost.grids_of_dimension(0)[0])
 
 # Extract useful information from the ghost GridBucket
 g_bulk_ghost: pp.Grid = gb_ghost.grids_of_dimension(2)[0]
@@ -88,6 +92,10 @@ if blocking_block:
     gb: pp.GridBucket = network_2d.mesh(mesh_args, constraints=[1, 2, 3, 4])
 else:
     gb: pp.GridBucket = network_2d.mesh(mesh_args)
+
+# Eliminate artificial 0D grids
+gb.eliminate_node(gb.grids_of_dimension(0)[0])
+gb.eliminate_node(gb.grids_of_dimension(0)[0])
 
 # Retrieve fracture grids
 g_frac_old: pp.Grid = gb.grids_of_dimension(1)[0]
@@ -112,7 +120,7 @@ tsc = pp.TimeSteppingControl(
     dt_min_max=(0.01, 0.25 * pp.HOUR),
     iter_max=50,
     iter_optimal_range=(25 - 3, 25 + 3),
-    iter_lowupp_factor=(1.1, 0.9),
+    iter_lowupp_factor=(1.2, 0.8),
     recomp_factor=0.5,
     recomp_max=12,
     print_info=True,
@@ -163,14 +171,16 @@ mult_cond: bool = np.logical_and(blocking_idx[3], mult_cond)
 blocking_cells: np.ndarray = np.where(mult_cond)[0]
 
 # Boundary conditions
-bc_faces: np.ndarray = g_bulk.get_boundary_faces()
-bc_type: np.ndarray = np.array(bc_faces.size * ["neu"])
+bc_faces = g_bulk.get_boundary_faces()
+bc_type = np.array(bc_faces.size * ["neu"])
 bc_type[np.in1d(bc_faces, top_left)] = "dir"
+bc_type[np.in1d(bc_faces, bottom)] = "dir"
 bc: pp.BoundaryCondition = pp.BoundaryCondition(
     g_bulk, faces=bc_faces, cond=list(bc_type)
 )
 bc_values: np.ndarray = np.zeros(g_bulk.num_faces)
-bc_values[top_left] = 0 + y_max  # 0 (pressure_head) + y_max (elevation_head)
+bc_values[top_left] = -20 + y_max  # -75 (pressure_head) + y_max (elevation_head)
+bc_values[bottom] = -200 + y_min  # -1000 (pressure_head) + y_min (elevation_head)
 
 # Hydraulic conductivity
 K_SAT: np.ndarray = 0.00922 * np.ones(g_bulk.num_cells)  # conductive bulk cells
@@ -207,14 +217,17 @@ for g, d in gb:
 # Parameters for the mortar
 for e, d in gb.edges():
     mg = d["mortar_grid"]
+    ones = np.ones(mg.num_cells)
+    zeros = np.zeros(mg.num_cells)
     g_sec, _ = gb.nodes_of_edge(e)
     d_sec = gb.node_props(g_sec)
     aperture = d_sec[pp.PARAMETERS][param_key]["aperture"]
-    k_perp_val = 0.00922 / (2 * aperture)
-    normal_diffusivity = k_perp_val * np.ones(mg.num_cells)
-    is_conductive = np.zeros(mg.num_cells, dtype=np.int8)
+    sat_conductivity = 0.00922  # [cm/s]
+    sat_normal_diffusivity = (sat_conductivity / (2 * aperture)) * ones  # [1/s]
+    is_conductive = zeros
     data = {
-        "normal_diffusivity": normal_diffusivity,
+        "sat_normal_diffusivity": sat_normal_diffusivity,
+        "normal_diffusivity": sat_normal_diffusivity,
         "is_conductive": is_conductive,
         "elevation": mg.cell_centers[dim_max - 1],
     }
@@ -228,12 +241,12 @@ z_frac_ghost: np.ndarray = g_frac_ghost.cell_centers[dim_max - 1]
 for g, d in gb:
     if g.dim == gb.dim_max():
         pp.set_state(
-            d, state={node_var: -1000 + d[pp.PARAMETERS][param_key]["elevation"]}
+            d, state={node_var: -200 + d[pp.PARAMETERS][param_key]["elevation"]}
         )
         pp.set_iterate(d, iterate={node_var: d[pp.STATE][node_var]})
     else:
         pp.set_state(
-            d, state={node_var: np.array([0 + d[pp.PARAMETERS][param_key]["datum"]])}
+            d, state={node_var: np.array([-25 + d[pp.PARAMETERS][param_key]["datum"]])}
         )
         pp.set_iterate(d, iterate={node_var: d[pp.STATE][node_var]})
 
@@ -247,17 +260,13 @@ grid_list: list = [g for g, _ in gb]
 edge_list: list = [e for e, _ in gb.edges()]
 
 # Construct degree of freedom manager and equations manager
-dof_manager: pp.DofManager = pp.DofManager(gb)
-equation_manager: pp.ad.EquationManager = pp.ad.EquationManager(gb, dof_manager)
+dof_manager = pp.DofManager(gb)
+equation_manager = pp.ad.EquationManager(gb, dof_manager)
 
 # Assign primary variables to their corresponding grids
-hb: pp.ad.MergedVariable = equation_manager.merge_variables([(g_bulk, node_var)])
-hf: pp.ad.MergedVariable = equation_manager.merge_variables(
-    [(g, node_var) for g in [g_frac]]
-)
-lmbda: pp.ad.MergedVariable = equation_manager.merge_variables(
-    [(e, edge_var) for e in edge_list]
-)
+hb = equation_manager.merge_variables([(g_bulk, node_var)])
+hf = equation_manager.merge_variables([(g, node_var) for g in [g_frac]])
+lmbda = equation_manager.merge_variables([(e, edge_var) for e in edge_list])
 
 # Shorthands. Note that the following merged variables all have different id's
 hb_m: pp.ad.MergedVariable = hb.previous_iteration()
@@ -282,20 +291,20 @@ ghost_projections = pp.ad.MortarProjections(
     gb=gb_ghost, grids=ghost_grid_list, edges=ghost_edge_list
 )
 subdomain_proj_scalar = pp.ad.SubdomainProjections(grids=grid_list)
-bulk_cell_rest: pp.ad.Matrix = subdomain_proj_scalar.cell_restriction(g_bulk)
-bulk_face_rest: pp.ad.Matrix = subdomain_proj_scalar.face_restriction(g_bulk)
-bulk_face_prol: pp.ad.Matrix = subdomain_proj_scalar.face_prolongation(g_bulk)
-frac_cell_rest: pp.ad.Matrix = subdomain_proj_scalar.cell_restriction(g_frac)
-frac_cell_prol: pp.ad.Matrix = subdomain_proj_scalar.cell_prolongation(g_frac)
+bulk_cell_rest: pp.ad.Matrix = subdomain_proj_scalar.cell_restriction([g_bulk])
+bulk_face_rest: pp.ad.Matrix = subdomain_proj_scalar.face_restriction([g_bulk])
+bulk_face_prol: pp.ad.Matrix = subdomain_proj_scalar.face_prolongation([g_bulk])
+frac_cell_rest: pp.ad.Matrix = subdomain_proj_scalar.cell_restriction([g_frac])
+frac_cell_prol: pp.ad.Matrix = subdomain_proj_scalar.cell_prolongation([g_frac])
 
 # Soil water retention curves
-swrc = SoilWaterRetentionCurves(gb=gb, param_key=param_key)
-theta_ad: pp.ad.Function = pp.ad.Function(swrc.water_content, "water content")
-krw_ad: pp.ad.Function = pp.ad.Function(swrc.relative_permeability, "rel perm")
-smc_ad: pp.ad.Function = pp.ad.Function(swrc.moisture_capacity, "moisture capacity")
+vgm = mdu.VanGenuchtenMualem(gb=gb, param_key=param_key)
+theta_ad: pp.ad.Function = vgm.water_content(as_ad=True)
+krw_ad: pp.ad.Function = vgm.relative_permeability(as_ad=True)
+smc_ad: pp.ad.Function = vgm.moisture_capacity(as_ad=True)
 
 # MPFA discretization
-mpfa_bulk: pp.ad.MpfaAd = pp.ad.MpfaAd(param_key, [g_bulk])
+mpfa_bulk = pp.ad.MpfaAd(param_key, [g_bulk])
 
 # Obtain single phase flow to compute directionality of upwind scheme
 flux1p_bulk: pp.ad.Operator = (
@@ -334,10 +343,11 @@ flux_bulk: pp.ad.Operator = (
 # NOTE: The expression containing the active ad variable (psi_bulk)
 # must be placed at the left of the (final) expression.
 # Otherwise, numpy will broadcast the expression leading to an undesirable output format
-dt_ad = ParameterScalar(param_key, "time_step", grid=g_bulk)
+dt_ad = ParameterScalar(param_key, "time_step", grid_list=[g_bulk])
 source_bulk = pp.ad.ParameterArray(param_key, "source", grids=[g_bulk])
 mass_bulk = pp.ad.MassMatrixAd(param_key, [g_bulk])
 
+linearization = "modified_picard"
 if linearization == "newton":
     accum_bulk_active = mass_bulk.mass * theta_ad(psib)
     accum_bulk_inactive = mass_bulk.mass * theta_ad(psib_n) * (-1)
@@ -366,7 +376,6 @@ conserv_bulk_eq.discretize(gb=gb)
 conserv_bulk_num = conserv_bulk_eq.evaluate(dof_manager=dof_manager)
 
 # %% Declare equations for the fracture
-# kw=kw)
 fracvol = FractureVolume(g_frac_ghost, d_frac, param_key)
 vol_ad = pp.ad.Function(fracvol.fracture_volume, name="Volume")
 vol_cap_ad = pp.ad.Function(fracvol.volume_capacity, name="Volume capacity")
@@ -394,7 +403,7 @@ else:
     )
 
 # Conservation equation in the fracture: This is a water volume balance
-aperture_ad = ParameterScalar(param_key, "aperture", grid=g_frac)
+aperture_ad = ParameterScalar(param_key, "aperture", grid_list=[g_frac])
 # vol_frac = vol_ad(h_frac)
 # vol_frac_n = vol_ad(hf_n)
 sources_from_mortar = frac_cell_rest * projections.mortar_to_secondary_int * lmbda
@@ -447,38 +456,60 @@ mortar_hf = frac_to_mortar(ghost_hf)
 is_conductive = pp.ad.ParameterArray(param_key, "is_conductive", edges=edge_list)
 
 # Interface flux
-mortar_flux = robin.mortar_scaling * (mortar_hb - mortar_hf) * is_conductive
-interface_flux_eq = mortar_flux + robin.mortar_discr * lmbda
+#mortar_flux = robin.mortar_scaling * (mortar_hb - mortar_hf) * is_conductive
+#interface_flux_eq = mortar_flux + robin.mortar_discr * lmbda
+
+interface_flux_eq = robin.mortar_discr * (mortar_hb - mortar_hf) * is_conductive + lmbda
 
 # interface_flux_eval = pp.ad.Expression(interface_flux_eq, dof_manager)
 interface_flux_eq.discretize(gb=gb)
 interface_flux_num = interface_flux_eq.evaluate(dof_manager=dof_manager)
 
 # %% Assemble discrete equations, feed into the equation manager, and discretize.
-eqs = [conserv_bulk_eq, conserv_frac_eq, interface_flux_eq]
-equation_manager.equations += eqs
+eqs = {"bulk_conservation": conserv_bulk_eq,
+       "fracture_conservation": conserv_frac_eq,
+       "interface_fluxes": interface_flux_eq
+       }
+equation_manager.equations.update(eqs)
 equation_manager.discretize(gb)
 
 # %% Initialize exporter. Note that we use the ghost grid rather than the physical one
+
+# Set state in bulk ghost grid
 pp.set_state(
-    d_bulk_ghost,
+    data=d_bulk_ghost,
     state={
         node_var: d_bulk[pp.STATE][node_var],
         "pressure_head": d_bulk[pp.STATE][node_var] - z_bulk,
     },
 )
+# Pressure head is not exported correctly. Try with a different method. Perhaps, np.max(
+# el_actual, 0)*
+# Set state in fracture ghost grid
 pp.set_state(
-    d_frac_ghost,
+    data=d_frac_ghost,
     state={
         node_var: d_frac[pp.PARAMETERS][param_key]["datum"]
         * np.ones(g_frac_ghost.num_cells),
         "pressure_head": d_frac[pp.STATE][node_var] - z_frac_ghost,
     },
 )
+# Set state in edges
+pp.set_state(
+    data=d_edge_ghost,
+    state={
+        edge_var: d_edge[pp.STATE][edge_var]
+    }
+)
+
+# Correct values of pressure head in the fracture if negative
+for val in d_frac_ghost[pp.STATE]["pressure_head"] <= 0:
+    d_frac_ghost[pp.STATE]["pressure_head"][val] = 0
+
 water_table = [d_frac[pp.STATE][node_var][0]]
 water_vol = [fracvol.fracture_volume(d_frac[pp.STATE][node_var])[0]]
-exporter_ghost = pp.Exporter(gb_ghost, "out", "twodim_simplex_vert")
-exporter_ghost.write_vtu([node_var, "pressure_head"], time_step=0)
+exporter_ghost = pp.Exporter(gb_ghost, "single_frac", "out")
+exporter_ghost.write_vtu([node_var, "pressure_head", "edge_var"], time_step=0)
 
 # %% Time loop
 total_iteration_counter: int = 0
@@ -498,9 +529,10 @@ while tsc.time < tsc.time_final:
     while iteration_counter <= tsc.iter_max and not residual_norm < abs_tol:
 
         # Solve system of equations and distribute variables to pp.ITERATE
-        A, b = equation_manager.assemble_matrix_rhs()
+        A, b = equation_manager.assemble()
         solution = spla.spsolve(A, b)
         dof_manager.distribute_variable(solution, additive=True, to_iterate=True)
+        #print(d_frac[pp.STATE]["hydraulic_head"])
 
         # Compute 'error' as norm of the residual
         residual_norm = np.linalg.norm(b, 2)
@@ -577,8 +609,12 @@ while tsc.time < tsc.time_final:
     )
     water_table.append(d_frac[pp.STATE][node_var][0])
     water_vol.append(fracvol.fracture_volume(d_frac[pp.STATE][node_var]))
-    dof_manager.distribute_variable(solution, additive=False)
+    #set_iterate_as_state(gb, node_var, edge_var)
+    mdunsat.ad_utils.set_state_as_iterate(gb, node_var, edge_var)
+    #dof_manager.distribute_variable(solution, additive=True, to_iterate=False)
     print()
+
+    #print("Success -->", d_frac[pp.STATE]["hydraulic_head"])
 
     # Export to ParaView
     pp.set_state(
@@ -596,9 +632,19 @@ while tsc.time < tsc.time_final:
             - z_frac_ghost,
         },
     )
+    pp.set_state(
+        data=d_edge_ghost,
+        state={
+            edge_var: d_edge[pp.STATE][edge_var]
+        }
+    )
+    # Correct values of pressure head in the fracture if negative
+    for val in d_frac_ghost[pp.STATE]["pressure_head"] <= 0:
+        d_frac_ghost[pp.STATE]["pressure_head"][val] = 0
     if tsc.time in tsc.schedule:
         export_counter += 1
-        exporter_ghost.write_vtu([node_var, "pressure_head"], time_step=export_counter)
+        exporter_ghost.write_vtu([node_var, "pressure_head", edge_var],
+                                 time_step=export_counter)
 
 # %% Plotting
 plot_hydraulic_head = True
