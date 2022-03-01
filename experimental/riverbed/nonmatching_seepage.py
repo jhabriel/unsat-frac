@@ -40,7 +40,6 @@ import numpy as np
 import scipy.sparse.linalg as spla
 import scipy.sparse as sps
 import matplotlib.pyplot as plt
-from matplotlib.pyplot import spy as sparsity
 
 plt.rcParams.update(
     {
@@ -53,7 +52,7 @@ plt.rcParams.update(
 )
 
 from porepy.numerics.ad.grid_operators import DirBC
-from mdunsat.ad_utils.ad_utils import (
+from mdunsat.ad_utils import (
     InterfaceUpwindAd,
     UpwindFluxBasedAd,
     vanGenuchten,

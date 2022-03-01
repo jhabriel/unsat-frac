@@ -5,17 +5,8 @@ Created on Wed May 26 14:46:33 2021
 
 @author: jv
 """
-import porepy as pp
 import numpy as np
-import scipy.sparse as sps
 import matplotlib.pyplot as plt
-
-from mdunsat.ad_utils.ad_utils import (
-    InterfaceUpwindAd,
-    ArithmeticAverageAd,
-    UpwindFluxBasedAd,
-    vanGenuchten,
-)
 
 import pylab
 
