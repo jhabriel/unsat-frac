@@ -3,7 +3,7 @@ import numpy as np
 import sympy as sym
 import pytest
 
-from mdunsat.ad_utils.ad_utils import vanGenuchten
+from mdunsat.ad_utils import vanGenuchten
 
 #%% Exact expressions
 p = sym.symbols("p", real=True)

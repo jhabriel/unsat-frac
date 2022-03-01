@@ -2,7 +2,7 @@ import porepy as pp
 import numpy as np
 import pytest
 
-from mdunsat.ad_utils.ad_utils import ArithmeticAverageAd, UpwindFluxBasedAd
+from mdunsat.ad_utils import ArithmeticAverageAd, UpwindFluxBasedAd
 from porepy.numerics.ad.grid_operators import DirBC
 
 

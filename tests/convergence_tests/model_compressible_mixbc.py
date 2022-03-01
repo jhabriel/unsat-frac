@@ -16,10 +16,8 @@ import sympy as sym
 import scipy.sparse.linalg as spla
 
 from porepy.numerics.ad.grid_operators import DirBC
-from mdunsat.ad_utils.ad_utils import ArithmeticAverageAd, UpwindFluxBasedAd
+from mdunsat.ad_utils import ArithmeticAverageAd, UpwindFluxBasedAd
 
-from porepy.numerics.fv.generaltpfaad import GeneralTpfaAd
-from porepy.numerics.fv.generaltpfaad import UpwindAd
 
 #%% Utility functions
 def l2_error(g, num_array, true_array, array_sol):

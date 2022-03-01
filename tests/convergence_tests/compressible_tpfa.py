@@ -15,27 +15,13 @@ import numpy as np
 import sympy as sym
 import scipy.sparse.linalg as spla
 
-from porepy.numerics.ad.grid_operators import DirBC
-from mdunsat.ad_utils.ad_utils import ArithmeticAverageAd, UpwindFluxBasedAd
-
-from porepy.numerics.fv.generaltpfaad import GeneralTpfaAd
-from porepy.numerics.fv.generaltpfaad import UpwindAd
-
-
 from porepy.numerics.fv.generaltpfaad import GeneralTpfaAd, UpwindAd, HarmAvgAd
 from porepy.numerics.ad.functions import (
-    exp,
-    sin,
-    cos,
-    tanh,
     heaviside,
-    RegularizedHeaviside,
 )
-from porepy.numerics.ad.equation_manager import Expression
 from porepy.numerics.ad.operators import SecondOrderTensorAd
 from porepy.numerics.ad.grid_operators import DirBC
-from porepy.numerics.ad.local_forward_mode import initLocalAdArrays
-from porepy.numerics.solvers.andersonacceleration import AndersonAcceleration
+
 
 #%% Utility functions
 def l2_error(g, num_array, true_array, array_sol):
