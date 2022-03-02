@@ -41,7 +41,7 @@ ghost_edge_list = gfo.get_edge_list(ghost_gb)
 schedule = list(np.linspace(0, 4 * pp.HOUR, 60, dtype=np.int32))
 tsc = pp.TimeSteppingControl(
     schedule=schedule,
-    dt_init=1.0,
+    dt_init=0.01,
     dt_min_max=(0.01, 0.25 * pp.HOUR),
     iter_max=13,
     iter_optimal_range=(4, 7),
@@ -331,7 +331,7 @@ accum_frac = accum_frac_active + accum_frac_inactive
 # Declare conservation equation
 # TODO: sources_from_mortar are the integrated mortar fluxes. Check if we need to scale
 #  this by some factor, before multiplying by the aperture.
-conserv_frac_eq = accum_frac - dt_ad * aperture_ad * sources_from_mortar
+conserv_frac_eq = accum_frac - dt_ad * sources_from_mortar
 
 # Evaluate and discretize
 conserv_frac_eq.discretize(gb=gb)
@@ -443,7 +443,7 @@ exporter_ghost.write_vtu([node_var, "pressure_head", edge_var], time_step=0)
 # %% Time loop
 total_iteration_counter: int = 0
 iters: list = []
-abs_tol: float = 1e-5
+abs_tol: float = 1e-2
 is_mortar_conductive: np.ndarray = np.zeros(gb.num_mortar_cells(), dtype=np.int8)
 control_faces: np.ndarray = is_mortar_conductive
 
