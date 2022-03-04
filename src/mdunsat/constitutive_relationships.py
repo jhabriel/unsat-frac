@@ -1,7 +1,7 @@
 import porepy as pp
 import numpy as np
 import scipy.sparse as sps
-from typing import Callable, Optional, Tuple, List, Any, Union, NewType
+from typing import Tuple, List, Union
 
 # Typing abbreviations
 Scalar = Union[int, float]
@@ -13,8 +13,7 @@ __all__ = ["FractureVolume", "VanGenuchtenMualem"]
 
 
 class FractureVolume:
-    """Self-made constitutive relationship for fracture volume as a function of the
-    hydraulic head"""
+    """Constitutive relationship for fracture volume as a function of the hydraulic head"""
 
     def __init__(
         self,
@@ -23,8 +22,10 @@ class FractureVolume:
         param_key: str
     ):
         """
-        Init method for the class. It is assumed that the parameter data dictionaries
-        of the given fracture grids contain the keys: "aperture" and "datum".
+        Init method for the class.
+
+        It is assumed that the parameter data dictionaries of the given fracture grids
+        contain the keys: "aperture" and "datum".
 
         Parameters:
             gb (pp.GridBucket): Mixed-dimensional grid bucket.
@@ -49,7 +50,6 @@ class FractureVolume:
         self._fracvol: np.ndarray = np.array(frac_vol)
         self._aperture: np.ndarray = np.array(aperture)
         self._datum: np.ndarray = np.array(datum)
-        self._min_datum: float = np.min(self._datum)
 
     def __repr__(self) -> str:
         return "Water volume as a function of hydraulic head."
@@ -98,7 +98,7 @@ class FractureVolume:
         self, hydraulic_head: Union[AdArray, NonAd]
     ) -> Union[AdArray, NonAd]:
         """
-        Fracture volume as a function of the pressure head
+        Compute fracture (or intersection) volume as a function of the hydraulic head
 
         Parameters:
             hydraulic_head (pp.ad.Ad_array or non-ad object): containing the value of the
@@ -117,23 +117,16 @@ class FractureVolume:
         #
         # Note that this relationship is only valid for water in hydrostatic equilibrium
 
-        pressure_threshold = -22.1
         if isinstance(hydraulic_head, pp.ad.Ad_array):
             # We need to transform the aperture into a diagonal matrix to be able to perform
             # the multiplication and thus avoid broadcasting errors
             aper = sps.spdiags(self._aperture, 0, self._N, self._N)
             water_volume: pp.ad.Ad_array = (
-                aper * (hydraulic_head - (self._datum + pressure_threshold))
+                aper * (hydraulic_head - (self._datum + self._gb.pressure_threshold))
             )
-            # is_dry: np.ndarray[bool] = hydraulic_head.val <= (
-            #     pressure_threshold + self._datum
-            # )
 
             # Correct values of water volume accordingly
             for idx, _ in enumerate(self._grids):
-                # If the fracture or fracture intersection is dry, then set the volume = 0
-                # if is_dry[idx]:
-                #     water_volume.val[idx] = 0
                 # If the water volume > the fracture or fracture intersection volume, then
                 # set the volume = fracture_volume
                 if water_volume.val[idx] > self._fracvol[idx]:
@@ -142,17 +135,11 @@ class FractureVolume:
             # Here, we don't need to do anything, numpy will take care of correctly
             # broadcasting everything for us
             water_volume: np.ndarray = self._aperture * (
-                    hydraulic_head - (self._datum + pressure_threshold)
+                    hydraulic_head - (self._datum + self._gb.pressure_threshold)
             )
-            # is_dry: np.ndarray[bool] = hydraulic_head <= (
-            #     pressure_threshold + np.min(self._datum)
-            # )
 
             # Correct values of water volume accordingly
             for idx in range(hydraulic_head.size):
-                # If the fracture or fracture intersection is dry, then set the volume = 0
-                # if is_dry[idx]:
-                #     water_volume[idx] = 0
                 # If the water volume > the fracture or fracture intersection volume, then
                 # set the volume = fracture_volume
                 if water_volume[idx] > self._fracvol[idx]:
