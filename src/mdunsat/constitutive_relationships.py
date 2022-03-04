@@ -17,7 +17,10 @@ class FractureVolume:
     hydraulic head"""
 
     def __init__(
-        self, gb: pp.GridBucket, fracture_grids: List[pp.Grid], param_key: str
+        self,
+        gb: pp.GridBucket,
+        fracture_grids: List[pp.Grid],
+        param_key: str
     ):
         """
         Init method for the class. It is assumed that the parameter data dictionaries
@@ -28,7 +31,6 @@ class FractureVolume:
             fracture_grids (List of pp.Grid): List of fracture grids.
             param_key (str): Parameter keyword for accessing the data parameters.
         """
-
         self._gb: pp.GridBucket = gb
         self._grids: List[pp.Grid] = fracture_grids
         self._kw: str = param_key
@@ -47,6 +49,7 @@ class FractureVolume:
         self._fracvol: np.ndarray = np.array(frac_vol)
         self._aperture: np.ndarray = np.array(aperture)
         self._datum: np.ndarray = np.array(datum)
+        self._min_datum: float = np.min(self._datum)
 
     def __repr__(self) -> str:
         return "Water volume as a function of hydraulic head."
@@ -119,24 +122,41 @@ class FractureVolume:
             # We need to transform the aperture into a diagonal matrix to be able to perform
             # the multiplication and thus avoid broadcasting errors
             aper = sps.spdiags(self._aperture, 0, self._N, self._N)
-            water_volume: pp.ad.Ad_array = aper * hydraulic_head - aper * (self._datum +
-                                                                           pressure_threshold)
-            # If the calculated water volume is greater than the fracture volume,
-            # use the fracture volume instead
+            water_volume: pp.ad.Ad_array = (
+                aper * (hydraulic_head - (self._datum + pressure_threshold))
+            )
+            is_dry: np.ndarray[bool] = hydraulic_head.val <= (
+                pressure_threshold + np.min(self._datum)
+            )
+
+            # Correct values of water volume accordingly
             for idx, _ in enumerate(self._grids):
+                # If the fracture or fracture intersection is dry, then set the volume = 0
+                if is_dry[idx]:
+                    water_volume.val[idx] = 0
+                # If the water volume > the fracture or fracture intersection volume, then
+                # set the volume = fracture_volume
                 if water_volume.val[idx] > self._fracvol[idx]:
                     water_volume.val[idx] = self._fracvol[idx]
         else:
             # Here, we don't need to do anything, numpy will take care of correctly
             # broadcasting everything for us
-            water_volume: np.ndarray = self._aperture * (hydraulic_head - (self._datum +
-                                                         pressure_threshold))
-            # If the calculated water volume is greater than the fracture volume,
-            # use the fracture volume instead
-            for idx, _ in enumerate(self._grids):
+            water_volume: np.ndarray = self._aperture * (
+                    hydraulic_head - (self._datum + pressure_threshold)
+            )
+            is_dry: np.ndarray[bool] = hydraulic_head <= (
+                pressure_threshold + np.min(self._datum)
+            )
+
+            # Correct values of water volume accordingly
+            for idx in range(hydraulic_head.size):
+                # If the fracture or fracture intersection is dry, then set the volume = 0
+                if is_dry[idx]:
+                    water_volume[idx] = 0
+                # If the water volume > the fracture or fracture intersection volume, then
+                # set the volume = fracture_volume
                 if water_volume[idx] > self._fracvol[idx]:
                     water_volume[idx] = self._fracvol[idx]
-
         return water_volume
 
     def _volume_capacity(self, hydraulic_head: Union[AdArray, NonAd]) -> NonAd:
