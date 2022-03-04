@@ -42,7 +42,7 @@ ghost_frac_edge_list = gfo.fracture_edge_list(ghost_gb)
 # export_mesh.write_vtu(ghost_gb)
 
 # %% Time parameters
-schedule = list(np.linspace(0, 150, 5, dtype=np.int32))
+schedule = list(np.linspace(0, 300, 5, dtype=np.int32))
 tsc = pp.TimeSteppingControl(
     schedule=schedule,
     dt_init=1.0,
@@ -543,7 +543,7 @@ while tsc.time < tsc.time_final:
         continue
 
     # Recompute solution if negative volume is encountered
-    if is_water_volume_negative(gb, node_var, frac_list):
+    if np.any(vol(h_frac.evaluate(dof_manager).val) < 0):
         tsc.next_time_step(recompute_solution=True, iterations=itr - 1)
         param_update.update_time_step(tsc.dt)
         print(f"Encountered negative volume. Reducing dt and recomputing solution.")
