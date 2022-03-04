@@ -42,12 +42,12 @@ ghost_frac_edge_list = gfo.fracture_edge_list(ghost_gb)
 # export_mesh.write_vtu(ghost_gb)
 
 # %% Time parameters
-schedule = list(np.linspace(0, 3600, 20, dtype=np.int32))
+schedule = list(np.linspace(0, 150, 5, dtype=np.int32))
 tsc = pp.TimeSteppingControl(
     schedule=schedule,
     dt_init=1.0,
-    dt_min_max=(1.0, 0.25 * pp.HOUR),
-    iter_max=13,
+    dt_min_max=(0.01, 0.25 * pp.HOUR),
+    iter_max=100,
     iter_optimal_range=(4, 7),
     iter_lowupp_factor=(1.3, 0.7),
     recomp_factor=0.5,
@@ -111,17 +111,17 @@ for g, d in gb:
         bc_faces = g.get_boundary_faces()
         bc_type = np.array(bc_faces.size * ["neu"])
         bc_type[np.in1d(bc_faces, top_left)] = "dir"
-        bc_type[np.in1d(bc_faces, bottom)] = "dir"
+        #bc_type[np.in1d(bc_faces, bottom)] = "dir"
         bc: pp.BoundaryCondition = pp.BoundaryCondition(
             g, faces=bc_faces, cond=list(bc_type)
         )
         bc_values: np.ndarray = np.zeros(g.num_faces)
         bc_values[top_left] = -15 + y_max  # -15 (pressure_head) + y_max (elevation_head)
-        bc_values[bottom] = -500 + y_min  # -500 (pressure_head) + y_min (elevation_head)
+        #bc_values[bottom] = -500 + y_min  # -500 (pressure_head) + y_min (elevation_head)
 
         # Hydraulic conductivity
         K_SAT: np.ndarray = 0.00922 * np.ones(g.num_cells)  # conductive bulk cells
-        K_SAT[mult_cond] = 5.55E-11  # hydraulic conductivity of blocking cells
+        K_SAT[mult_cond] = 5.55E-6  # hydraulic conductivity of blocking cells
 
         # Initialize bulk data
         specified_parameters: dict = {
@@ -192,10 +192,11 @@ min_datum_lfn = np.min(
 # %% Set initial states
 for g, d in gb:
     if g.dim == gb.dim_max():
-        pp.set_state(d, state={node_var: -500 + d[pp.PARAMETERS][param_key]["elevation"]})
+        pp.set_state(d, state={node_var: -30 + d[pp.PARAMETERS][param_key]["elevation"]})
         pp.set_iterate(d, iterate={node_var: d[pp.STATE][node_var]})
     else:
-        pp.set_state(d, state={node_var: np.array([pressure_threshold + min_datum_lfn])})
+        pp.set_state(d, state={node_var: np.array([pressure_threshold + d[pp.PARAMETERS][
+            param_key]["datum"]])})
         pp.set_iterate(d, iterate={node_var: d[pp.STATE][node_var]})
 
 for _, d in gb.edges():
@@ -290,7 +291,7 @@ dt_ad = mdu.ParameterScalar(param_key, "time_step", grids=bulk_list)
 source_bulk = pp.ad.ParameterArray(param_key, "source", grids=bulk_list)
 mass_bulk = pp.ad.MassMatrixAd(param_key, grids=bulk_list)
 
-linearization = "newton"  # linearization of the bulk equations
+linearization = "modified_picard"  # linearization of the bulk equations
 if linearization == "newton":
     accum_bulk_active = mass_bulk.mass * theta_ad(psib)
     accum_bulk_inactive = mass_bulk.mass * theta_ad(psib_n) * (-1)
@@ -355,7 +356,7 @@ accum_frac = accum_frac_active + accum_frac_inactive
 # Declare conservation equation
 # TODO: sources_from_mortar are the integrated mortar fluxes. Check if we need to scale
 #  this by some factor, before multiplying by the aperture.
-conserv_frac_eq = accum_frac - dt_ad * aperture_ad * sources_from_mortar
+conserv_frac_eq = accum_frac - dt_ad * sources_from_mortar
 
 # Evaluate and discretize
 conserv_frac_eq.discretize(gb=gb)
@@ -496,25 +497,25 @@ pp.set_state(
 # water_table_top = [d_frac_top[pp.STATE][node_var][0] - pressure_threshold]
 # water_vol_bottom = [vol(d_frac_bottom[pp.STATE][node_var])[0]]
 # water_vol_top = [vol(d_frac_top[pp.STATE][node_var])[0]]
-exporter_ghost = pp.Exporter(ghost_gb, "single_frac", "out")
+exporter_ghost = pp.Exporter(ghost_gb, "morse_code", "out")
 exporter_ghost.write_vtu([node_var], time_step=0)
 
 # %% Time loop
 total_iteration_counter: int = 0
 iters: list = []
-abs_tol: float = 1e-5
+ABS_TOL: float = 1E-3
 is_mortar_conductive: np.ndarray = np.zeros(gb.num_mortar_cells(), dtype=np.int8)
 control_faces: np.ndarray = is_mortar_conductive
 
 # Time loop
 while tsc.time < tsc.time_final:
     tsc.time += tsc.dt
-    iteration_counter: int = 0
-    residual_norm: float = 1.0
-    rel_res: float = 1.0
+    itr: int = 0
+    res_norm: float = 1E8
+    rel_res: float = 1E8
 
     # Solver loop
-    while iteration_counter <= tsc.iter_max and not residual_norm < abs_tol:
+    while itr <= tsc.iter_max and not res_norm < ABS_TOL:
 
         # Solve system of equations and distribute variables to pp.ITERATE
         A, b = equation_manager.assemble()
@@ -522,40 +523,28 @@ while tsc.time < tsc.time_final:
         dof_manager.distribute_variable(solution, additive=True, to_iterate=True)
 
         # Compute 'error' as norm of the residual
-        residual_norm = np.linalg.norm(b, 2)
-        if iteration_counter == 0:
-            initial_residual_norm = residual_norm
+        res_norm = np.linalg.norm(b, 2)
+        if itr == 0:
+            init_res_norm = res_norm
         else:
-            initial_residual_norm = max(residual_norm, initial_residual_norm)
-        rel_res = residual_norm / initial_residual_norm
-        print(
-            "time",
-            tsc.time,
-            "iter",
-            iteration_counter,
-            "res",
-            residual_norm,
-            "rel_res",
-            rel_res,
-            "dt",
-            tsc.dt,
-        )
+            inti_res_norm = max(res_norm, init_res_norm)
+        rel_res = res_norm / init_res_norm
+        print("t", tsc.time, "itr", itr, "res", res_norm, "rel_res", rel_res, "dt", tsc.dt)
 
         # Prepare next iteration
-        iteration_counter += 1
+        itr += 1
         total_iteration_counter += 1
-        # end of iteration loop
 
     # Recompute solution if we did not achieve convergence
-    if residual_norm > abs_tol or np.isnan(residual_norm):
-        tsc.next_time_step(recompute_solution=True, iterations=iteration_counter - 1)
+    if res_norm > ABS_TOL or np.isnan(res_norm):
+        tsc.next_time_step(recompute_solution=True, iterations=itr - 1)
         param_update.update_time_step(tsc.dt)
         set_iterate_as_state(gb, node_var, edge_var)
         continue
 
     # Recompute solution if negative volume is encountered
     if is_water_volume_negative(gb, node_var, frac_list):
-        tsc.next_time_step(recompute_solution=True, iterations=iteration_counter - 1)
+        tsc.next_time_step(recompute_solution=True, iterations=itr - 1)
         param_update.update_time_step(tsc.dt)
         print(f"Encountered negative volume. Reducing dt and recomputing solution.")
         set_iterate_as_state(gb, node_var, edge_var)
@@ -581,26 +570,27 @@ while tsc.time < tsc.time_final:
         )
         param_update.update_mortar_conductivity_state(is_mortar_conductive, edge_list)
         control_faces = is_mortar_conductive
+    # end of solver loop
 
     # Save number of iterations and time step
-    iters.append(iteration_counter - 1)
+    iters.append(itr - 1)
     times.append(tsc.time)
     dts.append(tsc.dt)
 
     # Succesful convergence
-    tsc.next_time_step(recompute_solution=False, iterations=iteration_counter - 1)
+    tsc.next_time_step(recompute_solution=False, iterations=itr - 1)
     param_update.update_time_step(tsc.dt)
     # print(f"Fracture water table height: {d_frac[pp.STATE][node_var][0] - pressure_threshold}")
-    print(
-         f"Top Fracture water volume: {vol(d_frac_top[pp.STATE][node_var])[0]}"
-    )
-    print(f"Point water volume: {vol(d_point[pp.STATE][node_var])[0]}")
-    print(
-         f"Bottom Fracture water volume: {vol(d_frac_bottom[pp.STATE][node_var])[0]}"
-    )
     # water_table.append(d_frac[pp.STATE][node_var][0] - pressure_threshold)
     # water_vol.append(vol(d_frac[pp.STATE][node_var]))
     set_state_as_iterate(gb, node_var, edge_var)
+    print(
+        f"Top Fracture water volume: {vol(d_frac_top[pp.STATE][node_var])[0]}"
+    )
+    print(f"Point water volume: {vol(d_point[pp.STATE][node_var])[0]}")
+    print(
+        f"Bottom Fracture water volume: {vol(d_frac_bottom[pp.STATE][node_var])[0]}"
+    )
     print()
 
     # Export to ParaView
