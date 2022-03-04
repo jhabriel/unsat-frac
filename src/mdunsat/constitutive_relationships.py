@@ -125,15 +125,15 @@ class FractureVolume:
             water_volume: pp.ad.Ad_array = (
                 aper * (hydraulic_head - (self._datum + pressure_threshold))
             )
-            is_dry: np.ndarray[bool] = hydraulic_head.val <= (
-                pressure_threshold + np.min(self._datum)
-            )
+            # is_dry: np.ndarray[bool] = hydraulic_head.val <= (
+            #     pressure_threshold + self._datum
+            # )
 
             # Correct values of water volume accordingly
             for idx, _ in enumerate(self._grids):
                 # If the fracture or fracture intersection is dry, then set the volume = 0
-                if is_dry[idx]:
-                    water_volume.val[idx] = 0
+                # if is_dry[idx]:
+                #     water_volume.val[idx] = 0
                 # If the water volume > the fracture or fracture intersection volume, then
                 # set the volume = fracture_volume
                 if water_volume.val[idx] > self._fracvol[idx]:
@@ -144,15 +144,15 @@ class FractureVolume:
             water_volume: np.ndarray = self._aperture * (
                     hydraulic_head - (self._datum + pressure_threshold)
             )
-            is_dry: np.ndarray[bool] = hydraulic_head <= (
-                pressure_threshold + np.min(self._datum)
-            )
+            # is_dry: np.ndarray[bool] = hydraulic_head <= (
+            #     pressure_threshold + np.min(self._datum)
+            # )
 
             # Correct values of water volume accordingly
             for idx in range(hydraulic_head.size):
                 # If the fracture or fracture intersection is dry, then set the volume = 0
-                if is_dry[idx]:
-                    water_volume[idx] = 0
+                # if is_dry[idx]:
+                #     water_volume[idx] = 0
                 # If the water volume > the fracture or fracture intersection volume, then
                 # set the volume = fracture_volume
                 if water_volume[idx] > self._fracvol[idx]:

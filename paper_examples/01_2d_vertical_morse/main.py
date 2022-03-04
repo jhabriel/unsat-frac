@@ -584,13 +584,10 @@ while tsc.time < tsc.time_final:
     # water_table.append(d_frac[pp.STATE][node_var][0] - pressure_threshold)
     # water_vol.append(vol(d_frac[pp.STATE][node_var]))
     set_state_as_iterate(gb, node_var, edge_var)
-    print(
-        f"Top Fracture water volume: {vol(d_frac_top[pp.STATE][node_var])[0]}"
-    )
-    print(f"Point water volume: {vol(d_point[pp.STATE][node_var])[0]}")
-    print(
-        f"Bottom Fracture water volume: {vol(d_frac_bottom[pp.STATE][node_var])[0]}"
-    )
+    vols = vol(h_frac.evaluate(dof_manager).val)
+    print(f"Top Fracture water volume: {vols[1]}")
+    print(f"Point water volume: {vols[2]}")
+    print(f"Bottom Fracture water volume: {vols[0]}")
     print()
 
     # Export to ParaView
