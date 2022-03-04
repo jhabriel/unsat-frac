@@ -143,7 +143,7 @@ class GhostHydraulicHead:
             # ad_Array, but its Jacobian remains unchanged. Not sure about the repercusion
             # that this might have. But if we need to do things correctly, we should apply
             # something on the lines of the chunk from above :)
-            dry_cells: np.ndarray[bool] = hfrac_broad.val < (self._cc + pressure_threshold)
+            dry_cells: np.ndarray[bool] = hfrac_broad.val <= (self._cc + pressure_threshold)
             hfrac_broad.val[dry_cells] = self._cc[dry_cells] + pressure_threshold
 
             # Now we are ready to project the hydraulic head onto the mortar grids. To this
@@ -187,6 +187,8 @@ class GhostHydraulicHead:
 
         # Create a list where item is number of cells corresponding to each frac grid
         num_cells: List[int] = [g.num_cells for g in self._ghost_low_dim_grids]
+        cum_sum = list(np.cumsum(num_cells))
+        cum_sum.insert(0, 0)
 
         # The number of rows of the broadcasting matrix corresponds to the total number of
         # fracture cells. The number of columns corresponds to the total number of
@@ -198,8 +200,12 @@ class GhostHydraulicHead:
         # Populate the matrix column-wise. The idea is to set to 1 the elements
         # corresponding to the number of ghost cells in each col, and leave the rest of the
         # elements untouched.
+        # BUG: Broadcasting matrix is not constructed correctly when subdomains have
+        #  different number of ghost cells
         for col in range(0, cols):
-            broad_matrix[col * num_cells[col]: (col + 1) * num_cells[col], col] = 1
+            base: int = cum_sum[col]
+            roof: int = cum_sum[col + 1]
+            broad_matrix[base:roof, col] = 1
 
         return broad_matrix
 
