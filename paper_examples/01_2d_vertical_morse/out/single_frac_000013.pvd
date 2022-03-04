@@ -1,8 +1,0 @@
-<?xml version="1.0"?>
-<VTKFile type="Collection" version="0.1" byte_order="LittleEndian" compressor="vtkZLibDataCompressor">
-<Collection>
-	<DataSet group="" part="" file="single_frac_1_000013.vtu"/>
-	<DataSet group="" part="" file="single_frac_2_000013.vtu"/>
-	<DataSet group="" part="" file="single_frac_mortar_1_000013.vtu"/>
-</Collection>
-</VTKFile>
