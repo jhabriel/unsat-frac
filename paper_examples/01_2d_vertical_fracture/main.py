@@ -495,7 +495,7 @@ while tsc.time < tsc.time_final:
         continue
 
     # Recompute solution if negative volume is encountered
-    if is_water_volume_negative(gb, node_var, frac_list):
+    if np.any(vol(h_frac.evaluate(dof_manager).val) < 0):
         tsc.next_time_step(recompute_solution=True, iterations=iteration_counter - 1)
         param_update.update_time_step(tsc.dt)
         print(f"Encountered negative volume. Reducing dt and recomputing solution.")
