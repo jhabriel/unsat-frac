@@ -74,6 +74,7 @@ param_update = mdu.ParameterUpdate(gb, param_key)  # object to update parameters
 
 gb.pressure_threshold = -22.1  # [cm]
 for g, d in gb:
+    # Parameters for the bulk
     if g.dim == gb.dim_max():
         # For convinience, store values of bounding box
         x_min: float = gb.bounding_box()[0][0]
@@ -121,7 +122,7 @@ for g, d in gb:
         K_SAT[mult_cond] = 5.55E-6  # hydraulic conductivity of blocking cells
 
         # Initialize bulk data
-        specified_parameters: dict = {
+        param: dict = {
             "second_order_tensor": pp.SecondOrderTensor(K_SAT),  # [cm/s]
             "bc": bc,
             "bc_values": bc_values,
@@ -135,24 +136,30 @@ for g, d in gb:
             "m_vG": 0.5,  # (1 - 1 / n_vG) van Genuchten parameter [-]
             "time_step": tsc.dt,  # [s]
         }
-        pp.initialize_data(g, d, param_key, specified_parameters)
 
+    # Parameters for the fracture grids
     elif g.dim == gb.dim_max() - 1:
-        # Parameters for the fracture grids
-        specified_parameters = {
+        param: dict = {
             "aperture": 0.1,
             "datum": np.min(g.face_centers[gb.dim_max() - 1]),
             "elevation": g.cell_centers[gb.dim_max() - 1],
         }
-        pp.initialize_data(g, d, param_key, specified_parameters)
+        param["specific_volume"] = param["aperture"] ** (gb.dim_max() - g.dim)
+        param["volume"] = np.sum(param["specific_volume"] * g.cell_volumes)
+        pp.initialize_data(g, d, param_key, param)
+
+    # Parameters for the 0D point
     else:
-        # Parameters for the 0D point
-        specified_parameters = {
-            "aperture": 0.02,
-            "datum": np.min(g.cell_centers[gb.dim_max() - 1]),
-            "elevation": g.cell_centers[gb.dim_max() - 1],
+        param: dict = {
+            "aperture": 0.1,
+            "datum": g.cell_centers[gb.dim_max() - 1][0],
+            "elevation": g.cell_centers[gb.dim_max() - 1]
         }
-        pp.initialize_data(g, d, param_key, specified_parameters)
+        param["specific_volume"] = param["aperture"] ** (gb.dim_max() - g.dim)
+        param["volume"] = np.sum(param["specific_volume"] * g.cell_volumes)
+
+    # Initialize the data parameter for the grid
+    pp.initialize_data(g, d, param_key, param)
 
 # Parameters for the mortar
 for e, d in gb.edges():
