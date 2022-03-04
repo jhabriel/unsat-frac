@@ -9,7 +9,6 @@ from grid_factory import GridGenerator
 from mdunsat.ad_utils import (
     get_conductive_mortars,
     get_ghost_hydraulic_head,
-    is_water_volume_negative,
     set_state_as_iterate,
     set_iterate_as_state
 )

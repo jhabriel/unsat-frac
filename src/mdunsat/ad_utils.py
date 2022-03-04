@@ -6,7 +6,6 @@ Author: @jv
 # %% Importing modules
 import porepy as pp
 import numpy as np
-import scipy.sparse as sps
 
 from typing import Tuple, List, Union
 
@@ -43,7 +42,6 @@ def get_conductive_mortars(
         is_conductive (np.ndarray of bools): True if is conductive, False if is blocking.
 
     """
-    pressure_threshold = -22.1  # TODO: This has to be retrieved from some data dictionary
     is_conductive = np.zeros(gb.num_mortar_cells(), dtype=np.int8)
     zeta = pp.ad.ParameterArray(param_key, "elevation", edges=edge_list).parse(gb)
 
@@ -60,10 +58,10 @@ def get_conductive_mortars(
     # check if the pressure trace is greater (or equal) than the pressure threshold,
     # if that is the case also promote that cell to conductive.
     for mortar_cell in range(0, tr_hb.val.size):
-        if hf.val[mortar_cell] > (pressure_threshold + zeta[mortar_cell]):
+        if hf.val[mortar_cell] > (gb.pressure_threshold + zeta[mortar_cell]):
             is_conductive[mortar_cell] = 1
         else:
-            if tr_hb.val[mortar_cell] >= (pressure_threshold + zeta[mortar_cell]):
+            if tr_hb.val[mortar_cell] >= (gb.pressure_threshold + zeta[mortar_cell]):
                 is_conductive[mortar_cell] = 1
 
     return is_conductive
@@ -111,44 +109,15 @@ def set_state_as_iterate(gb: pp.GridBucket, node_var: str, edge_var: str):
         pp.set_state(data=d, state={edge_var: d[pp.STATE][pp.ITERATE][edge_var]})
 
 
-def is_water_volume_negative(
-    gb: pp.GridBucket, fracture_var: str, fracture_list: List[pp.Grid]
-) -> bool:
-    """
-    Checks wheter negative water volume in the fractures is encountered
-
-    Parameters
-    ----------
-    gb : GridBucket
-    fracture_var : fracture variable keyword
-    fracture_list : List of fracture grids
-
-    Returns
-    -------
-    bool : True or False
-
-    """
-    tol = 1e-3
-
-    # Sanity check
-    for g in fracture_list:
-        if g.dim == gb.dim_max():
-            raise ValueError("Function meant only for fracture grids.")
-
-    is_negative = False
-    for g in fracture_list:
-        d = gb.node_props(g)
-        if np.any(d[pp.STATE][pp.ITERATE][fracture_var] < (-12.1 - tol)):  # hardcoded
-            is_negative = True
-
-    # Instead of -12.1, we have to use: z_min + pressure_threshold
-
-    return is_negative
-
-
 def get_ghost_hydraulic_head(ghost_g: pp.Grid, h_frac: np.ndarray) -> np.ndarray:
     """
     Computes the hyd head for a ghost fracture grid given the hyd head with one d.o.f.
+
+    Mathematically, the condition is given by:
+
+                    { z_cc,    h_frac < z_cc
+    ghost_h_frac =  {
+                    { h_frac,  otherwise
 
     Parameters:
         ghost_g (pp.Grid): Fracture ghost grid
@@ -159,12 +128,6 @@ def get_ghost_hydraulic_head(ghost_g: pp.Grid, h_frac: np.ndarray) -> np.ndarray
             fracture grid. If the ghost fracture cell is dry, the hydraulic head is equal to
             the elevation of such cell, otherwise, it takes the value of h_frac.
 
-    Technical Note:
-    ---------------
-    Mathematically, the condition is given by
-                        { z_cc,    h_frac < z_cc
-        ghost_h_frac =  {
-                        { h_frac,  otherwise
     """
 
     cc = ghost_g.cell_centers[1]
@@ -190,7 +153,7 @@ class ParameterUpdate:
         edge_list: List[Tuple[pp.Grid, pp.Grid]],
     ):
         """
-        Updates the normal diffusivity for a given set of edges
+        Update the normal diffusivity for a given set of edges
         """
 
         for e in edge_list:

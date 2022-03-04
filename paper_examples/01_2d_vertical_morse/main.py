@@ -9,7 +9,6 @@ from grid_factory import GridGenerator
 from mdunsat.ad_utils import (
     get_conductive_mortars,
     get_ghost_hydraulic_head,
-    is_water_volume_negative,
     set_state_as_iterate,
     set_iterate_as_state
 )
@@ -73,7 +72,7 @@ for _, d in gb.edges():
 # Parameter assignment
 param_update = mdu.ParameterUpdate(gb, param_key)  # object to update parameters
 
-pressure_threshold = -22.1  # [cm]
+gb.pressure_threshold = -22.1  # [cm]
 for g, d in gb:
     if g.dim == gb.dim_max():
         # For convinience, store values of bounding box
@@ -111,13 +110,11 @@ for g, d in gb:
         bc_faces = g.get_boundary_faces()
         bc_type = np.array(bc_faces.size * ["neu"])
         bc_type[np.in1d(bc_faces, top_left)] = "dir"
-        #bc_type[np.in1d(bc_faces, bottom)] = "dir"
         bc: pp.BoundaryCondition = pp.BoundaryCondition(
             g, faces=bc_faces, cond=list(bc_type)
         )
         bc_values: np.ndarray = np.zeros(g.num_faces)
         bc_values[top_left] = -15 + y_max  # -15 (pressure_head) + y_max (elevation_head)
-        #bc_values[bottom] = -500 + y_min  # -500 (pressure_head) + y_min (elevation_head)
 
         # Hydraulic conductivity
         K_SAT: np.ndarray = 0.00922 * np.ones(g.num_cells)  # conductive bulk cells
@@ -195,7 +192,7 @@ for g, d in gb:
         pp.set_state(d, state={node_var: -30 + d[pp.PARAMETERS][param_key]["elevation"]})
         pp.set_iterate(d, iterate={node_var: d[pp.STATE][node_var]})
     else:
-        pp.set_state(d, state={node_var: np.array([pressure_threshold + d[pp.PARAMETERS][
+        pp.set_state(d, state={node_var: np.array([gb.pressure_threshold + d[pp.PARAMETERS][
             param_key]["datum"]])})
         pp.set_iterate(d, iterate={node_var: d[pp.STATE][node_var]})
 

@@ -119,8 +119,6 @@ class GhostHydraulicHead:
     # Private methods
     def _proj_frac_hyd_head(self, h_frac: Union[AdArray, NonAd]) -> [AdArray, NonAd]:
 
-        pressure_threshold: Scalar = -22.1  # this will have to be retrieved from a data dict
-
         if isinstance(h_frac, pp.ad.Ad_array):
             # Broadcast the fracture hydraulic head. The resulting ad operator will consist of
             # concatanated broadcasted hydraulic heads. The size of the operator is given by
@@ -143,8 +141,10 @@ class GhostHydraulicHead:
             # ad_Array, but its Jacobian remains unchanged. Not sure about the repercusion
             # that this might have. But if we need to do things correctly, we should apply
             # something on the lines of the chunk from above :)
-            dry_cells: np.ndarray[bool] = hfrac_broad.val <= (self._cc + pressure_threshold)
-            hfrac_broad.val[dry_cells] = self._cc[dry_cells] + pressure_threshold
+            dry_cells: np.ndarray[bool] = hfrac_broad.val <= (
+                    self._cc + self._gb.pressure_threshold
+            )
+            hfrac_broad.val[dry_cells] = self._cc[dry_cells] + self._gb.pressure_threshold
 
             # Now we are ready to project the hydraulic head onto the mortar grids. To this
             # aim, we first need the relevant subdomain projections and mortar projections.
@@ -164,8 +164,8 @@ class GhostHydraulicHead:
             # Check proper doc above
             broad_matrix: sps.lil_matrix = self._get_broadcasting_matrix()
             hfrac_broad: np.ndarray = broad_matrix * h_frac
-            dry_cells = hfrac_broad < (self._cc + pressure_threshold)
-            hfrac_broad[dry_cells] = self._cc[dry_cells] + pressure_threshold
+            dry_cells = hfrac_broad < (self._cc + self._gb.pressure_threshold)
+            hfrac_broad[dry_cells] = self._cc[dry_cells] + self._gb.pressure_threshold
             cell_prolongation = self._ghost_subdomain_proj.cell_prolongation(
                 grids=self._ghost_low_dim_grids
             ).parse(gb=self._ghost_gb)
