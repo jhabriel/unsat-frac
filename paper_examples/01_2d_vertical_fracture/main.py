@@ -16,7 +16,7 @@ from mdunsat.ad_utils import (
 
 # %% Retrieve grid buckets
 gfo = GridGenerator(
-    mesh_args={"mesh_size_frac": 2, "mesh_size_bound": 2.5},
+    mesh_args={"mesh_size_frac": 4, "mesh_size_bound": 5},
     csv_file="network.csv",
     domain={"xmin": 0, "ymin": 0, "xmax": 100, "ymax": 100},
     constraints=[1, 2, 3, 4],
@@ -41,8 +41,8 @@ ghost_edge_list = gfo.get_edge_list(ghost_gb)
 schedule = list(np.linspace(0, 4 * pp.HOUR, 60, dtype=np.int32))
 tsc = pp.TimeSteppingControl(
     schedule=schedule,
-    dt_init=0.01,
-    dt_min_max=(0.01, 0.25 * pp.HOUR),
+    dt_init=1,
+    dt_min_max=(0.01, 1 * pp.HOUR),
     iter_max=13,
     iter_optimal_range=(4, 7),
     iter_lowupp_factor=(1.3, 0.7),
@@ -107,13 +107,13 @@ for g, d in gb:
         bc_faces = g.get_boundary_faces()
         bc_type = np.array(bc_faces.size * ["neu"])
         bc_type[np.in1d(bc_faces, top_left)] = "dir"
-        bc_type[np.in1d(bc_faces, bottom)] = "dir"
+        #bc_type[np.in1d(bc_faces, bottom)] = "dir"
         bc: pp.BoundaryCondition = pp.BoundaryCondition(
             g, faces=bc_faces, cond=list(bc_type)
         )
         bc_values: np.ndarray = np.zeros(g.num_faces)
         bc_values[top_left] = -15 + y_max  # -15 (pressure_head) + y_max (elevation_head)
-        bc_values[bottom] = -500 + y_min  # -500 (pressure_head) + y_min (elevation_head)
+        #bc_values[bottom] = -500 + y_min  # -500 (pressure_head) + y_min (elevation_head)
 
         # Hydraulic conductivity
         K_SAT: np.ndarray = 0.00922 * np.ones(g.num_cells)  # conductive bulk cells
@@ -266,7 +266,7 @@ dt_ad = mdu.ParameterScalar(param_key, "time_step", grids=bulk_list)
 source_bulk = pp.ad.ParameterArray(param_key, "source", grids=bulk_list)
 mass_bulk = pp.ad.MassMatrixAd(param_key, grids=bulk_list)
 
-linearization = "newton"  # linearization of the bulk equations
+linearization = "modified_picard"  # linearization of the bulk equations
 if linearization == "newton":
     accum_bulk_active = mass_bulk.mass * theta_ad(psib)
     accum_bulk_inactive = mass_bulk.mass * theta_ad(psib_n) * (-1)
@@ -443,7 +443,7 @@ exporter_ghost.write_vtu([node_var, "pressure_head", edge_var], time_step=0)
 # %% Time loop
 total_iteration_counter: int = 0
 iters: list = []
-abs_tol: float = 1e-2
+abs_tol: float = 1e-7
 is_mortar_conductive: np.ndarray = np.zeros(gb.num_mortar_cells(), dtype=np.int8)
 control_faces: np.ndarray = is_mortar_conductive
 

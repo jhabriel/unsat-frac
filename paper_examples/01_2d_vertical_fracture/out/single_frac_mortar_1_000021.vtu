@@ -21,7 +21,7 @@ AQAAAACAAACAAgAAEgAAAA==eJxjZoAA5lF6lB4AGgAyTwDx
 </Cells>
 <CellData>
 <DataArray type="Float64" Name="mortar_flux" format="binary">
-AQAAAACAAACAAgAASQAAAA==eJxjDc18JS68YT/DKCAL/GJ29V0zZf1o+KEBoR38cywj2u3bJXjvZk+tsT9gfLchWL/I/r+USttJn2J7nqADtlx7yu0Bpi4XeA==
+AQAAAACAAACAAgAAOQAAAA==eJxjYBgFo4D6YKnVrdvX3NrtkwsZ/dUKaux37vryIJ6/yN5zqRFHq06x/elfDuc9N5TbAwCCLhJg
 </DataArray>
 <DataArray type="Int64" Name="grid_dim" format="binary">
 AQAAAACAAACAAgAAEgAAAA==eJxjZIAAxlF6lB4AGgBnwABR

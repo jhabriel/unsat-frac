@@ -2,41 +2,41 @@
 <VTKFile type="UnstructuredGrid" version="0.1" byte_order="LittleEndian" compressor="vtkZLibDataCompressor">
 <!--This file was created by meshio v5.3.0-->
 <UnstructuredGrid>
-<Piece NumberOfPoints="86" NumberOfCells="80">
+<Piece NumberOfPoints="48" NumberOfCells="42">
 <Points>
 <DataArray type="Float64" Name="Points" NumberOfComponents="3" format="binary">
-AQAAAACAAAAQCAAA5gEAAA==eJzt1M9Lk3EcB/CnDIwiFjSQDLLDoFGDCBUdOXqvdLkpzemSdpPosD+gw8DLoMNAEIQuHgI7dBTdgkB0lhTUVIhoEiGDIoauOfYz8jAin/d322fwXOrenst779c+h+/zfOCraXzcUKFZ8LT8R38qca3uZtUvo+MXsyyuHbBfReqQWRK35Niv4YnyonjkB/t1xKrMgvjGLns3QqfY8+LVbXovHOfZc+I96/Q+nLCyZ8X3l+l2+HrZM+JLUfoNzPSw7zXPE6M7EOtmT4unld+EX/n35nf4RAfOOtm/ice26E4sLrCnxL1v6bf087J/Ec+u0W8jscu+I55/SR/ESpn9o7jpFX0IwefH9J4QH31HdyH8gL4hPvOBfgeXnMf1HhXf/Ewfru05Ob3a8PavdDemZn/ruTzQcNc+3YNnHuZr8ccF9hH0q//fi79R+x7FvFmdX7yWdzGn9rLzVx/uYnoRfaG+m3jyInMMVhvfNyXuuKBHeAzxiNqLeKCD6YMtpPYo/ugc532YD7KnxedMzHGcDDD3xBdPc34cITd7RjzRzpxAxs7MiqfbOD+B+1fYc4b39SPRycz/m4f9eHiGP4qG+Xt1LxnmG142zE/WvWKYb/hPw3zrHmjdAzVv3QM1/1/ugSN4Mmh1
+AQAAAACAAACABAAAaAEAAA==eJxjYAABTwcw1RDm0KwSW3Lx6Oc9DFDx1atAINThZuWmk2rSn+DioSBwNcRB9zy7fE3BB7g4hA5xYPPc9WJR91uC4ifYQXSwg1oGSPwlXHwCP4gOcnBrB4k/hYtHioPoQIesZSDxh3Dxy3IgOsBhSUfpRVfx22j2+jnwTCoBil8mKJ64UNh6o7CPg4J+W7XomWNw8UNO6mVJ6l4OC170BNQuWwsXV35itVHY2sPB4fU/n+jH621g4s2tfm+O+Lk5XFi/6JdP9HG4uJV+EtAgFweejUwTH8ZdhouvelcKlHBy8Nm8eYmMwG24uOS6zrk3Oh0cTkQZ3Vmd8BAu/uQIyF5bB7FPXGmelk/h4oqaIPMtHW72Pn7/TPAlXJxpBcgcU4cffHsqW169gYs/UAMas9HQgdfjFOPExA9w8TeqIHFtB6ZJ247d9/0EF4fQKg61txd161l9QRUfTT+j6QcqTmz6AQANClcS
 </DataArray>
 </Points>
 <Cells>
 <DataArray type="Int64" Name="connectivity" format="binary">
-AQAAAACAAAAABQAAvgAAAA==eJx1yNk2ggEYheEGKqF5QjONQioqQkopY0n3fysO7P/kXevbJ896t8v1Pzf0QC/ckbtG+6AfBuQeOojf6X14AA9hSIaNjsAojMG4TBidhCmYhhl5hD6WJzALczAvC0YXYQmW4ak8Q1dkFdZgHTZgU57LFryAl/BKto2+hh3YlT30DX6nb2EfDuBQ3hl9D0fwAT7KJ6PH8BlO4FS+oGdyDl/hAi7lm9Hv8AN+wi/5jV7JNfyBG/gLt/IPyoUaQQ==
+AQAAAACAAACgAgAAbAAAAA==eJx1xzcOwgAUwNAAoZfQQ+8QQr3/7RjwZOl7eXKS/KvIqqxhinXZwGbwLdnGDnZlD/vBD2Qmh3KE4+Ancipnci5zXOBSruQaN7iVO9wHf5BHPOFZXvAa/E0W8i5LfAT/lC/5lh/5xR8LqQff
 </DataArray>
 <DataArray type="Int64" Name="offsets" format="binary">
-AQAAAACAAACAAgAAowAAAA==eJwtxdFmAgAAAMAkSZLMTCaTmZnMTDJJMjMzM8nMZGZmZjLJZJJkkiQzmUySpE/tobuXCwY2Qg474qhjjjvhLW97x0nvOuU9p73vAx/6yBkf+8SnzjrnM+ddcNEln/vCl77ytW9867IrvvO9H1z1o5/87Be/+s3vrvnDdTf86aa/3HLbHXf97Z77HnjokX/867H/PPG/p5557oWXXnkNorsZUQ==
+AQAAAACAAABQAQAAXQAAAA==eJwtxdEGwgAAAMCZyWSSJJmZzCTJTJJMZpIkyUz//y172N3LhcEk8syx50688NIrr73x1qkz5965cOm9Dz765Mq1z7746psb392688NPv/z2x1//3Hvw3yM9PQcP
 </DataArray>
 <DataArray type="Int64" Name="types" format="binary">
-AQAAAACAAACAAgAAEgAAAA==eJxjZoAA5lF6lB4AGgAyTwDx
+AQAAAACAAABQAQAAEAAAAA==eJxjZoAA5lGaKjQAVfgAfw==
 </DataArray>
 </Cells>
 <CellData>
 <DataArray type="Float64" Name="mortar_flux" format="binary">
-AQAAAACAAACAAgAAOQAAAA==eJxjYBgFo4D6QDfLiMMnsM0+2DVxdt/TKvvw04rXip4W2Nsvrti5ckqh/dnrCyWElxfZAwBW5hHb
+AQAAAACAAABQAQAAJQAAAA==eJyT98t79yWgxl5te11H19UW+9PzhJtUhbvtGUYBWQAAumEKzg==
 </DataArray>
 <DataArray type="Int64" Name="grid_dim" format="binary">
-AQAAAACAAACAAgAAEgAAAA==eJxjZIAAxlF6lB4AGgBnwABR
+AQAAAACAAABQAQAAEAAAAA==eJxjZIAAxlGaKjQAHYgAKw==
 </DataArray>
 <DataArray type="Int64" Name="grid_edge_number" format="binary">
-AQAAAACAAACAAgAADwAAAA==eJxjYBgFo2DgAAACgAAB
+AQAAAACAAABQAQAADQAAAA==eJxjYBgF1AQAAVAAAQ==
 </DataArray>
 <DataArray type="Int64" Name="is_mortar" format="binary">
-AQAAAACAAACAAgAAEgAAAA==eJxjZIAAxlF6lB4AGgBnwABR
+AQAAAACAAABQAQAAEAAAAA==eJxjZIAAxlGaKjQAHYgAKw==
 </DataArray>
 <DataArray type="Int64" Name="mortar_side" format="binary">
-AQAAAACAAACAAgAAFQAAAA==eJxjZIAAxlGaLJpplKaIBgCBYAB5
+AQAAAACAAABQAQAAEgAAAA==eJxjZIAAxkFOMw0RGgAkwABA
 </DataArray>
 <DataArray type="Int64" Name="cell_id" format="binary">
-AQAAAACAAACAAgAAjgAAAA==eJwtxddCAQAAAECbStJQGdGm0paRkS0R//83Hty9XCCwFXTIYUccdcxxJ7zjXe856X2nfOC0D33kY58441Of+dxZ55x3wRcuuuRLX/naN771ne9ddsUPfvSTq372i1/95nd/+NM1f7nuhptu+dttd9x1zz/ue+ChRx574qln/vXcf1546X+vvPYGbVYMWQ==
+AQAAAACAAABQAQAAUgAAAA==eJwtxUkCgQAAAMAsoYUUZSkRLfz/gx3MXCYI/hZeeuW1Q2+89c6RYydOvffBmY/OXfjks0tXvvjqm++u3fjh1k+/3Pntj3sPHj35659ngwcDXg==
 </DataArray>
 </CellData>
 </Piece>
