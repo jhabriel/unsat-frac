@@ -316,7 +316,7 @@ dt_ad = mdu.ParameterScalar(param_key, "time_step", grids=bulk_list)
 source_bulk = pp.ad.ParameterArray(param_key, "source", grids=bulk_list)
 mass_bulk = pp.ad.MassMatrixAd(param_key, grids=bulk_list)
 
-linearization = "modified_picard"  # linearization of the bulk equations
+linearization = "l_scheme"  # linearization of the bulk equations
 if linearization == "newton":
     accum_bulk_active = mass_bulk.mass * theta_ad(psib)
     accum_bulk_inactive = mass_bulk.mass * theta_ad(psib_n) * (-1)
@@ -342,7 +342,6 @@ conserv_bulk_eq = accumulation_bulk + dt_ad * div_bulk * flux_bulk - dt_ad * sou
 conserv_bulk_eq.discretize(gb=gb)
 conserv_bulk_num = conserv_bulk_eq.evaluate(dof_manager=dof_manager).val
 
-linearization = "modified_picard"  # linearization of the bulk equations
 if linearization == "newton":
     accum_bulk_active = mass_bulk.mass * theta_ad(bulk_cell_rest * psi)
     accum_bulk_inactive = mass_bulk.mass * theta_ad(bulk_cell_rest * psi_n) * (-1)
@@ -369,12 +368,13 @@ else:
 
 
 accumulation_bulk = accum_bulk_active + accum_bulk_inactive
-conserv_bulk_eq = accumulation_bulk + dt_ad * div_bulk * flux_bulk - dt_ad * source_bulk
+conserv_bulk_eq = accumulation_bulk + dt_ad * div_bulk * flux - dt_ad * source_bulk
 conserv_bulk_eq.discretize(gb=gb)
 conserv_bulk_num_new = conserv_bulk_eq.evaluate(dof_manager=dof_manager).val
 
 print(np.linalg.norm(conserv_bulk_num_new - conserv_bulk_num))
 print()
+
 # %% Governing equations in the fracture
 
 # Get water volume as a function of the hydraulic head, and its first derivative
@@ -383,7 +383,7 @@ vol_ad: pp.ad.Function = fv.fracture_volume(as_ad=True)
 vol_cap_ad: pp.ad.Function = fv.volume_capacity(as_ad=True)
 vol = fv.fracture_volume(as_ad=False)
 
-linearization = "newton"  # linearization of the bulk equations
+linearization = "modified_picard"  # linearization of the bulk equations
 if linearization == "newton":
     accum_frac_active = vol_ad(h_frac)
     accum_frac_inactive = vol_ad(h_frac_n) * (-1)
@@ -400,23 +400,50 @@ else:
         "'modified_picard', or 'l_scheme'."
     )
 
-# Concatenate apertures from relevant grids, and converted into a pp.ad.Matrix
-aperture = np.array(
-    [d[pp.PARAMETERS][param_key]["aperture"] for g, d in gb if g.dim < gb.dim_max()]
-)
-aperture_ad = pp.ad.Matrix(sps.spdiags(aperture, 0, aperture.size, aperture.size))
 # Retrieve sources from mortar
 sources_from_mortar = frac_cell_rest * proj.mortar_to_secondary_int * lmbda
 # Accumulation terms
 accum_frac = accum_frac_active + accum_frac_inactive
 # Declare conservation equation
-# TODO: sources_from_mortar are the integrated mortar fluxes. Check if we need to scale
-#  this by some factor, before multiplying by the aperture.
 conserv_frac_eq = accum_frac - dt_ad * sources_from_mortar
-
-# Evaluate and discretize
 conserv_frac_eq.discretize(gb=gb)
-conserv_frac_num = conserv_frac_eq.evaluate(dof_manager=dof_manager)
+conserv_frac_num = conserv_frac_eq.evaluate(dof_manager=dof_manager).val
+
+if linearization == "newton":
+    accum_frac_active = vol_ad(frac_cell_rest * h)
+    accum_frac_inactive = vol_ad(frac_cell_rest * h_n) * (-1)
+elif linearization == "modified_picard":
+    accum_frac_active = (frac_cell_rest * h) * vol_cap_ad(frac_cell_rest * h_m)
+    accum_frac_inactive = (
+            vol_ad(frac_cell_rest * h_m)
+            - vol_cap_ad(frac_cell_rest * h_m) * (frac_cell_rest * h_m)
+            - vol_ad(frac_cell_rest * h_n)
+    )
+elif linearization == "l_scheme":
+    L = 0.015
+    accum_frac_active = L * frac_cell_rest * h
+    accum_frac_inactive = (
+            vol_ad(frac_cell_rest * h_m)
+            - L * frac_cell_rest * h_m
+            - vol_ad(frac_cell_rest * h_n)
+    )
+else:
+    raise NotImplementedError(
+        "Linearization scheme not implemented. Use 'newton', "
+        "'modified_picard', or 'l_scheme'."
+    )
+
+# Retrieve sources from mortar
+sources_from_mortar = frac_cell_rest * proj.mortar_to_secondary_int * lmbda
+# Accumulation terms
+accum_frac = accum_frac_active + accum_frac_inactive
+# Declare conservation equation
+conserv_frac_eq = accum_frac - dt_ad * sources_from_mortar
+conserv_frac_eq.discretize(gb=gb)
+conserv_frac_num_new = conserv_frac_eq.evaluate(dof_manager=dof_manager).val
+
+print(np.linalg.norm(conserv_frac_num_new - conserv_frac_num))
+print()
 
 # %% Governing equations on the interfaces
 mpfa_global = pp.ad.MpfaAd(param_key, grid_list)
