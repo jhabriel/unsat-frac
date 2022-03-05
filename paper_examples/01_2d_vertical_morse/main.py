@@ -110,10 +110,8 @@ for g, d in gb:
         bc_faces = g.get_boundary_faces()
         bc_type = np.array(bc_faces.size * ["neu"])
         bc_type[np.in1d(bc_faces, top_left)] = "dir"
-        bc: pp.BoundaryCondition = pp.BoundaryCondition(
-            g, faces=bc_faces, cond=list(bc_type)
-        )
-        bc_values: np.ndarray = np.zeros(g.num_faces)
+        bc = pp.BoundaryCondition(g, faces=bc_faces, cond=list(bc_type))
+        bc_values = np.zeros(g.num_faces)
         bc_values[top_left] = -15 + y_max  # -15 (pressure_head) + y_max (elevation_head)
 
         # Hydraulic conductivity
@@ -139,10 +137,18 @@ for g, d in gb:
 
     elif g.dim == gb.dim_max() - 1:
         # Parameters for the fracture grids
+        # Note that boundary values are not employed, but needed to compute global
+        # traces of hydraulic heads
+        bc_faces = g.get_boundary_faces()
+        bc_type = bc_faces.size * ["neu"]
+        bc = pp.BoundaryCondition(g, faces=bc_faces, cond=bc_type)
         specified_parameters = {
             "aperture": 0.1,
+            "bc": bc,
+            "bc_values": np.zeros(g.num_faces),
             "datum": np.min(g.face_centers[gb.dim_max() - 1]),
             "elevation": g.cell_centers[gb.dim_max() - 1],
+            "second_order_tensor": pp.SecondOrderTensor(np.ones(g.num_cells))
         }
         pp.initialize_data(g, d, param_key, specified_parameters)
     else:
@@ -151,6 +157,7 @@ for g, d in gb:
             "aperture": 0.02,
             "datum": np.min(g.cell_centers[gb.dim_max() - 1]),
             "elevation": g.cell_centers[gb.dim_max() - 1],
+            "second_order_tensor": pp.SecondOrderTensor(np.ones(g.num_cells))
         }
         pp.initialize_data(g, d, param_key, specified_parameters)
 
@@ -181,10 +188,6 @@ for e, d in gb.edges():
             "elevation": mg.cell_centers[gb.dim_max() - 1],
         }
     pp.initialize_data(mg, d, param_key, data)
-
-min_datum_lfn = np.min(
-    [d[pp.PARAMETERS][param_key]["datum"] for g, d in gb if g.dim < gb.dim_max()]
-)
 
 # %% Set initial states
 for g, d in gb:
@@ -372,8 +375,8 @@ conserv_bulk_eq = accumulation_bulk + dt_ad * div_bulk * flux - dt_ad * source_b
 conserv_bulk_eq.discretize(gb=gb)
 conserv_bulk_num_new = conserv_bulk_eq.evaluate(dof_manager=dof_manager).val
 
-print(np.linalg.norm(conserv_bulk_num_new - conserv_bulk_num))
-print()
+# print(np.linalg.norm(conserv_bulk_num_new - conserv_bulk_num))
+# print()
 
 # %% Governing equations in the fracture
 
@@ -383,7 +386,7 @@ vol_ad: pp.ad.Function = fv.fracture_volume(as_ad=True)
 vol_cap_ad: pp.ad.Function = fv.volume_capacity(as_ad=True)
 vol = fv.fracture_volume(as_ad=False)
 
-linearization = "modified_picard"  # linearization of the bulk equations
+linearization = "newton"  # linearization of the fracture equations
 if linearization == "newton":
     accum_frac_active = vol_ad(h_frac)
     accum_frac_inactive = vol_ad(h_frac_n) * (-1)
@@ -442,12 +445,28 @@ conserv_frac_eq = accum_frac - dt_ad * sources_from_mortar
 conserv_frac_eq.discretize(gb=gb)
 conserv_frac_num_new = conserv_frac_eq.evaluate(dof_manager=dof_manager).val
 
-print(np.linalg.norm(conserv_frac_num_new - conserv_frac_num))
-print()
+# print(np.linalg.norm(conserv_frac_num_new - conserv_frac_num))
+# print()
 
 # %% Governing equations on the interfaces
 mpfa_global = pp.ad.MpfaAd(param_key, grid_list)
 robin = pp.ad.RobinCouplingAd(param_key, edge_list)
+
+proj_high_h = (
+        proj.primary_to_mortar_avg * mpfa_global.bound_pressure_cell * h
+        + proj.primary_to_mortar_avg
+        * mpfa_global.bound_pressure_face
+        * proj.mortar_to_primary_int
+        * lmbda
+)
+
+proj_high_h_m = (
+        proj.primary_to_mortar_avg * mpfa_global.bound_pressure_cell * h_m
+        + proj.primary_to_mortar_avg
+        * mpfa_global.bound_pressure_face
+        * proj.mortar_to_primary_int
+        * lmbda_m
+)
 
 # Projected bulk pressure traces onto the mortar grid
 proj_tr_h_bulk = (
@@ -480,6 +499,7 @@ proj_tr_h_bulk_m = (
 pfh = mdu.GhostHydraulicHead(gb=gb, ghost_gb=ghost_gb)
 frac_to_mortar_ad: pp.ad.Function = pfh.proj_fra_hyd_head(as_ad=True)
 proj_h_frac = frac_to_mortar_ad(h_frac)
+proj_low_h = frac_to_mortar_ad(frac_cell_rest * h)
 
 # Array parameter that keeps track of conductive (1) and blocking (0) mortar cells
 # Note that if it is blocking, the whole discrete equation is removed for that mortar cell
@@ -489,8 +509,14 @@ is_conductive = pp.ad.ParameterArray(param_key, "is_conductive", edges=edge_list
 mortar_flux = robin.mortar_discr * (proj_tr_h_bulk - proj_h_frac) * is_conductive
 interface_flux_eq = mortar_flux + lmbda
 interface_flux_eq.discretize(gb=gb)
-interface_flux_num = interface_flux_eq.evaluate(dof_manager=dof_manager)
+interface_flux_num = interface_flux_eq.evaluate(dof_manager=dof_manager).val
 
+# Interface flux
+mortar_flux = robin.mortar_discr * (proj_high_h - proj_low_h) * is_conductive
+interface_flux_eq = mortar_flux + lmbda
+interface_flux_eq.discretize(gb=gb)
+interface_flux_num_new = interface_flux_eq.evaluate(dof_manager=dof_manager).val
+                       
 # %% Assemble discrete equations, feed into the equation manager, and discretize.
 eqs = {"bulk_conservation": conserv_bulk_eq,
        "fracture_conservation": conserv_frac_eq,
