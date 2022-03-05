@@ -206,11 +206,14 @@ dof_manager = pp.DofManager(gb)
 equation_manager = pp.ad.EquationManager(gb, dof_manager)
 
 # %% Assign primary variables to their corresponding grids
+h = equation_manager.merge_variables([(g, node_var) for g in grid_list])
 h_bulk = equation_manager.merge_variables([(g, node_var) for g in bulk_list])
 h_frac = equation_manager.merge_variables([(g, node_var) for g in lfn_list])
 lmbda = equation_manager.merge_variables([(e, edge_var) for e in edge_list])
 
 # Shorthands. Note that the following merged variables all have different id's
+h_m = h.previous_iteration()
+h_n = h.previous_timestep()
 h_bulk_m = h_bulk.previous_iteration()
 h_bulk_n = h_bulk.previous_timestep()
 h_frac_m = h_frac.previous_iteration()
@@ -219,6 +222,13 @@ lmbda_m = lmbda.previous_iteration()
 lmbda_n = lmbda.previous_timestep()
 
 # Useful auxiliary variables
+zeta = pp.ad.ParameterArray(
+    param_keyword=param_key, array_keyword="elevation", grids=grid_list, name="elevation"
+)
+psi = h - zeta  # pressure head ad
+psi_m = h_m - zeta  # pressure head previous iteration
+psi_n = h_n - zeta  # pressure head previous time step
+
 zc_bulk_ad = pp.ad.Array(bulk_list[0].cell_centers[gb.dim_max() - 1])
 psib: pp.ad.Operator = h_bulk - zc_bulk_ad  # pressure head (active)
 psib_m: pp.ad.Operator = h_bulk_m - zc_bulk_ad  # pressure head at prev iter
@@ -229,10 +239,10 @@ psib_n: pp.ad.Operator = h_bulk_n - zc_bulk_ad  # pressure head at prev time
 # Grid operators
 div_bulk = pp.ad.Divergence(grids=bulk_list)
 bound_bulk = pp.ad.BoundaryCondition(param_key, grids=bulk_list)
-projections = pp.ad.MortarProjections(gb=gb, grids=grid_list, edges=edge_list)
-ghost_projections = pp.ad.MortarProjections(
-    gb=ghost_gb, grids=ghost_grid_list, edges=ghost_edge_list
-)
+
+proj = pp.ad.MortarProjections(gb=gb, grids=grid_list, edges=edge_list)
+ghost_proj = pp.ad.MortarProjections(gb=ghost_gb, grids=ghost_grid_list, edges=ghost_edge_list)
+
 subdomain_proj_scalar = pp.ad.SubdomainProjections(grids=grid_list)
 bulk_cell_rest: pp.ad.Matrix = subdomain_proj_scalar.cell_restriction(bulk_list)
 bulk_face_rest: pp.ad.Matrix = subdomain_proj_scalar.face_restriction(bulk_list)
@@ -252,17 +262,29 @@ smc_ad: pp.ad.Function = vgm.moisture_capacity(as_ad=True)
 mpfa_bulk = pp.ad.MpfaAd(param_key, bulk_list)
 
 # Obtain single phase flow to compute directionality of upwind scheme
+flux_single_phase = (
+        mpfa_bulk.flux * bulk_cell_rest * h_m
+        + mpfa_bulk.bound_flux * bound_bulk
+        + mpfa_bulk.bound_flux * bulk_face_rest * proj.mortar_to_primary_int * lmbda_m
+)
+
 flux_single_phase_bulk: pp.ad.Operator = (
         mpfa_bulk.flux * h_bulk_m
         + mpfa_bulk.bound_flux * bound_bulk
         + mpfa_bulk.bound_flux
         * bulk_face_rest
-        * projections.mortar_to_primary_int
+        * proj.mortar_to_primary_int
         * lmbda_m
 )
 
 # Upwinding of relative permeabilities
 upwind = mdu.FluxBaseUpwindAd(gb=gb, grid_list=bulk_list, param_key=param_key)
+
+zeta_faces_bulk = pp.ad.Array(bulk_list[0].face_centers[gb.dim_max() - 1])
+psi_bound_bulk = bound_bulk - zeta_faces_bulk
+psi_bulk_m = bulk_cell_rest * psi_m
+krw_faces = upwind(krw_ad(psi_bulk_m), krw_ad(psi_bound_bulk), flux_single_phase)
+
 zf_bulk_ad = pp.ad.Array(bulk_list[0].face_centers[gb.dim_max() - 1])
 psi_bc_ad = bound_bulk - zf_bulk_ad
 krw_faces_ad: pp.ad.Operator = upwind(
@@ -270,13 +292,19 @@ krw_faces_ad: pp.ad.Operator = upwind(
 )
 
 # Multiphase Darcy fluxes
+flux = (
+    krw_faces * mpfa_bulk.flux * bulk_cell_rest * h
+    + krw_faces * mpfa_bulk.bound_flux * bound_bulk
+    + krw_faces * mpfa_bulk.bound_flux * bulk_face_rest * proj.mortar_to_primary_int * lmbda
+)
+
 flux_bulk: pp.ad.Operator = (
         krw_faces_ad * mpfa_bulk.flux * h_bulk
         + krw_faces_ad * mpfa_bulk.bound_flux * bound_bulk
         + krw_faces_ad
         * mpfa_bulk.bound_flux
         * bulk_face_rest
-        * projections.mortar_to_primary_int
+        * proj.mortar_to_primary_int
         * lmbda
 )
 
@@ -311,11 +339,42 @@ else:
 
 accumulation_bulk = accum_bulk_active + accum_bulk_inactive
 conserv_bulk_eq = accumulation_bulk + dt_ad * div_bulk * flux_bulk - dt_ad * source_bulk
-
-# Discretize and evaluate
 conserv_bulk_eq.discretize(gb=gb)
-conserv_bulk_num = conserv_bulk_eq.evaluate(dof_manager=dof_manager)
+conserv_bulk_num = conserv_bulk_eq.evaluate(dof_manager=dof_manager).val
 
+linearization = "modified_picard"  # linearization of the bulk equations
+if linearization == "newton":
+    accum_bulk_active = mass_bulk.mass * theta_ad(bulk_cell_rest * psi)
+    accum_bulk_inactive = mass_bulk.mass * theta_ad(bulk_cell_rest * psi_n) * (-1)
+elif linearization == "modified_picard":
+    accum_bulk_active = mass_bulk.mass * (
+            (bulk_cell_rest * psi) * smc_ad(bulk_cell_rest * psi_m)
+    )
+    accum_bulk_inactive = mass_bulk.mass * (
+            theta_ad(bulk_cell_rest * psi_m) - smc_ad(bulk_cell_rest * psi_m) *
+            (bulk_cell_rest * psi_m) - theta_ad(bulk_cell_rest * psi_n)
+    )
+elif linearization == "l_scheme":
+    L = 0.0025
+    accum_bulk_active = L * mass_bulk.mass * (bulk_cell_rest * psi)
+    accum_bulk_inactive = mass_bulk.mass * (
+            theta_ad(bulk_cell_rest * psi_m)
+            - L * (bulk_cell_rest * psi_m) - theta_ad(bulk_cell_rest * psi_n)
+    )
+else:
+    raise NotImplementedError(
+        "Linearization scheme not implemented. Use 'newton', "
+        "'modified_picard', or 'l_scheme'."
+    )
+
+
+accumulation_bulk = accum_bulk_active + accum_bulk_inactive
+conserv_bulk_eq = accumulation_bulk + dt_ad * div_bulk * flux_bulk - dt_ad * source_bulk
+conserv_bulk_eq.discretize(gb=gb)
+conserv_bulk_num_new = conserv_bulk_eq.evaluate(dof_manager=dof_manager).val
+
+print(np.linalg.norm(conserv_bulk_num_new - conserv_bulk_num))
+print()
 # %% Governing equations in the fracture
 
 # Get water volume as a function of the hydraulic head, and its first derivative
@@ -347,7 +406,7 @@ aperture = np.array(
 )
 aperture_ad = pp.ad.Matrix(sps.spdiags(aperture, 0, aperture.size, aperture.size))
 # Retrieve sources from mortar
-sources_from_mortar = frac_cell_rest * projections.mortar_to_secondary_int * lmbda
+sources_from_mortar = frac_cell_rest * proj.mortar_to_secondary_int * lmbda
 # Accumulation terms
 accum_frac = accum_frac_active + accum_frac_inactive
 # Declare conservation equation
@@ -365,28 +424,28 @@ robin = pp.ad.RobinCouplingAd(param_key, edge_list)
 
 # Projected bulk pressure traces onto the mortar grid
 proj_tr_h_bulk = (
-        projections.primary_to_mortar_avg
+        proj.primary_to_mortar_avg
         * bulk_face_prol
         * mpfa_bulk.bound_pressure_cell
         * h_bulk
-        + projections.primary_to_mortar_avg
+        + proj.primary_to_mortar_avg
         * bulk_face_prol
         * mpfa_bulk.bound_pressure_face
         * bulk_face_rest
-        * projections.mortar_to_primary_int
+        * proj.mortar_to_primary_int
         * lmbda
 )
 
 proj_tr_h_bulk_m = (
-        projections.primary_to_mortar_avg
+        proj.primary_to_mortar_avg
         * bulk_face_prol
         * mpfa_bulk.bound_pressure_cell
         * h_bulk_m
-        + projections.primary_to_mortar_avg
+        + proj.primary_to_mortar_avg
         * bulk_face_prol
         * mpfa_bulk.bound_pressure_face
         * bulk_face_rest
-        * projections.mortar_to_primary_int
+        * proj.mortar_to_primary_int
         * lmbda_m
 )
 

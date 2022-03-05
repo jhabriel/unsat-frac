@@ -208,14 +208,14 @@ class ParameterUpdate:
 #         self._edgelist: List[Edge] = [e for e, _ in self._gb.edges()]
 #         self._gfrac = g_fracture
 #
-#         # Get hold of ghost mortar projections
+#         # Get hold of ghost mortar proj
 #         proj = pp.ad.MortarProjections(
 #             gb=self._gb, grids=self._gridlist, edges=self._edgelist
 #         )
 #         # We only need secondary -> mortar (average)
 #         self._secondary_to_mortar_avg = proj.secondary_to_mortar_avg.parse(gb=self._gb)
 #
-#         # Get hold of ghost subdomain projections
+#         # Get hold of ghost subdomain proj
 #         subdomain_projection = pp.ad.SubdomainProjections(grids=self._gridlist)
 #         # We need the prolongation from the fracture to the global number of cells
 #         self._cell_prolongation = subdomain_projection.cell_prolongation(

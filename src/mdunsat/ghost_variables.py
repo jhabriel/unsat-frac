@@ -77,12 +77,12 @@ class GhostHydraulicHead:
         #         ghost_edges.append(e)
         # self._ghost_edges = ghost_edges
 
-        # Ghost mortar projections
+        # Ghost mortar proj
         self._ghost_mortar_proj: pp.ad.MortarProjections = pp.ad.MortarProjections(
             gb=self._ghost_gb, grids=self._ghost_grid, edges=self._ghost_edges
         )
 
-        # Ghost subdomain projections
+        # Ghost subdomain proj
         self._ghost_subdomain_proj: pp.ad.SubdomainProjections = pp.ad.SubdomainProjections(
             grids=self._ghost_grid
         )
@@ -147,7 +147,7 @@ class GhostHydraulicHead:
             hfrac_broad.val[dry_cells] = self._cc[dry_cells] + self._gb.pressure_threshold
 
             # Now we are ready to project the hydraulic head onto the mortar grids. To this
-            # aim, we first need the relevant subdomain projections and mortar projections.
+            # aim, we first need the relevant subdomain proj and mortar proj.
             cell_prolongation = self._ghost_subdomain_proj.cell_prolongation(
                 grids=self._ghost_low_dim_grids
             ).parse(gb=self._ghost_gb)
