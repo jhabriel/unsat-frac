@@ -41,12 +41,12 @@ ghost_frac_edge_list = gfo.fracture_edge_list(ghost_gb)
 # export_mesh.write_vtu(ghost_gb)
 
 # %% Time parameters
-schedule = list(np.linspace(0, 300, 5, dtype=np.int32))
+schedule = list(np.linspace(0, 20, 2, dtype=np.int32))
 tsc = pp.TimeSteppingControl(
     schedule=schedule,
-    dt_init=1.0,
+    dt_init=0.01,
     dt_min_max=(0.01, 0.25 * pp.HOUR),
-    iter_max=100,
+    iter_max=20,
     iter_optimal_range=(4, 7),
     iter_lowupp_factor=(1.3, 0.7),
     recomp_factor=0.5,
@@ -146,7 +146,6 @@ for g, d in gb:
         }
         param["specific_volume"] = param["aperture"] ** (gb.dim_max() - g.dim)
         param["volume"] = np.sum(param["specific_volume"] * g.cell_volumes)
-        pp.initialize_data(g, d, param_key, param)
 
     # Parameters for the 0D point
     else:
@@ -168,30 +167,25 @@ for e, d in gb.edges():
     zeros = np.zeros(mg.num_cells)
     g_sec, _ = gb.nodes_of_edge(e)
     d_sec = gb.node_props(g_sec)
-    time_scale_factor = 1E10
-    aperture = d_sec[pp.PARAMETERS][param_key]["aperture"]
+    time_scale_factor = 2
+    aperture = d_sec[pp.PARAMETERS][param_key]["aperture"]  # [cm]
     sat_conductivity = 0.00922  # [cm/s]
     sat_normal_diffusivity = (sat_conductivity / (2 * aperture)) * ones  # [1/s]
-    is_conductive = zeros
     if mg.dim == gb.dim_max() - 1:
         data = {
             "sat_normal_diffusivity": sat_normal_diffusivity,
             "normal_diffusivity": sat_normal_diffusivity,
-            "is_conductive": is_conductive,
+            "is_conductive": zeros,
             "elevation": mg.cell_centers[gb.dim_max() - 1],
         }
     else:
         data = {
             "sat_normal_diffusivity": sat_normal_diffusivity * time_scale_factor,
             "normal_diffusivity": sat_normal_diffusivity * time_scale_factor,
-            "is_conductive": is_conductive,
+            "is_conductive": ones,
             "elevation": mg.cell_centers[gb.dim_max() - 1],
         }
     pp.initialize_data(mg, d, param_key, data)
-
-min_datum_lfn = np.min(
-    [d[pp.PARAMETERS][param_key]["datum"] for g, d in gb if g.dim < gb.dim_max()]
-)
 
 # %% Set initial states
 for g, d in gb:
@@ -347,19 +341,11 @@ else:
         "Linearization scheme not implemented. Use 'newton', "
         "'modified_picard', or 'l_scheme'."
     )
-
-# Concatenate apertures from relevant grids, and converted into a pp.ad.Matrix
-aperture = np.array(
-    [d[pp.PARAMETERS][param_key]["aperture"] for g, d in gb if g.dim < gb.dim_max()]
-)
-aperture_ad = pp.ad.Matrix(sps.spdiags(aperture, 0, aperture.size, aperture.size))
 # Retrieve sources from mortar
 sources_from_mortar = frac_cell_rest * projections.mortar_to_secondary_int * lmbda
 # Accumulation terms
 accum_frac = accum_frac_active + accum_frac_inactive
 # Declare conservation equation
-# TODO: sources_from_mortar are the integrated mortar fluxes. Check if we need to scale
-#  this by some factor, before multiplying by the aperture.
 conserv_frac_eq = accum_frac - dt_ad * sources_from_mortar
 
 # Evaluate and discretize
@@ -547,7 +533,9 @@ while tsc.time < tsc.time_final:
         continue
 
     # Recompute solution if negative volume is encountered
-    if np.any(vol(h_frac.evaluate(dof_manager).val) < 0):
+    current_volume = vol(h_frac.evaluate(dof_manager).val)
+    print("Current volume: ", current_volume)
+    if np.any(current_volume < 0):
         tsc.next_time_step(recompute_solution=True, iterations=itr - 1)
         param_update.update_time_step(tsc.dt)
         print(f"Encountered negative volume. Reducing dt and recomputing solution.")
