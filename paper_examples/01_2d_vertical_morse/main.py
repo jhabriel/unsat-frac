@@ -72,7 +72,6 @@ for _, d in gb.edges():
 # Parameter assignment
 param_update = mdu.ParameterUpdate(gb, param_key)  # object to update parameters
 
-gb.pressure_threshold = -22.1  # [cm]
 for g, d in gb:
 
     # Set parameters for the bulk
@@ -114,7 +113,7 @@ for g, d in gb:
         bc_type[np.in1d(bc_faces, top_left)] = "dir"
         bc = pp.BoundaryCondition(g, faces=bc_faces, cond=list(bc_type))
         bc_values = np.zeros(g.num_faces)
-        bc_values[top_left] = -15 + y_max  # -15 (pressure_head) + y_max (elevation_head)
+        bc_values[top_left] = 2 + y_max  # -15 (pressure_head) + y_max (elevation_head)
 
         # Saturatted hydraulic conductivity
         K_SAT: np.ndarray = 0.00922 * np.ones(g.num_cells)  # conductive bulk cells
@@ -198,8 +197,7 @@ for g, d in gb:
         pp.set_state(d, state={node_var: -30 + d[pp.PARAMETERS][param_key]["elevation"]})
         pp.set_iterate(d, iterate={node_var: d[pp.STATE][node_var]})
     else:
-        pp.set_state(d, state={node_var: np.array([gb.pressure_threshold + d[pp.PARAMETERS][
-            param_key]["datum"]])})
+        pp.set_state(d, state={node_var: d[pp.PARAMETERS][param_key]["datum"]})
         pp.set_iterate(d, iterate={node_var: d[pp.STATE][node_var]})
 
 for _, d in gb.edges():
@@ -213,17 +211,11 @@ equation_manager = pp.ad.EquationManager(gb, dof_manager)
 
 # %% Assign primary variables to their corresponding grids
 h = equation_manager.merge_variables([(g, node_var) for g in grid_list])
-# h_bulk = equation_manager.merge_variables([(g, node_var) for g in bulk_list])
-# h_frac = equation_manager.merge_variables([(g, node_var) for g in lfn_list])
 lmbda = equation_manager.merge_variables([(e, edge_var) for e in edge_list])
 
 # Shorthands. Note that the following merged variables all have different id's
 h_m = h.previous_iteration()
 h_n = h.previous_timestep()
-# h_bulk_m = h_bulk.previous_iteration()
-# h_bulk_n = h_bulk.previous_timestep()
-# h_frac_m = h_frac.previous_iteration()
-# h_frac_n = h_frac.previous_timestep()
 lmbda_m = lmbda.previous_iteration()
 lmbda_n = lmbda.previous_timestep()
 
@@ -234,11 +226,6 @@ zeta = pp.ad.ParameterArray(
 psi = h - zeta  # pressure head ad
 psi_m = h_m - zeta  # pressure head previous iteration
 psi_n = h_n - zeta  # pressure head previous time step
-
-# zc_bulk_ad = pp.ad.Array(bulk_list[0].cell_centers[gb.dim_max() - 1])
-# psib: pp.ad.Operator = h_bulk - zc_bulk_ad  # pressure head (active)
-# psib_m: pp.ad.Operator = h_bulk_m - zc_bulk_ad  # pressure head at prev iter
-# psib_n: pp.ad.Operator = h_bulk_n - zc_bulk_ad  # pressure head at prev time
 
 # %% Grid operators and cell restrictions
 
@@ -255,6 +242,9 @@ bulk_face_rest: pp.ad.Matrix = subdomain_proj_scalar.face_restriction(bulk_list)
 bulk_face_prol: pp.ad.Matrix = subdomain_proj_scalar.face_prolongation(bulk_list)
 frac_cell_rest: pp.ad.Matrix = subdomain_proj_scalar.cell_restriction(lfn_list)
 frac_cell_prol: pp.ad.Matrix = subdomain_proj_scalar.cell_prolongation(lfn_list)
+
+h_bulk = bulk_cell_rest * h
+h_lfn = frac_cell_rest * h
 
 # %% Governing equations in the bulk
 
@@ -274,15 +264,6 @@ flux_single_phase = (
         + mpfa_bulk.bound_flux * bulk_face_rest * proj.mortar_to_primary_int * lmbda_m
 )
 
-# flux_single_phase_bulk: pp.ad.Operator = (
-#         mpfa_bulk.flux * h_bulk_m
-#         + mpfa_bulk.bound_flux * bound_bulk
-#         + mpfa_bulk.bound_flux
-#         * bulk_face_rest
-#         * proj.mortar_to_primary_int
-#         * lmbda_m
-#)
-
 # Upwinding of relative permeabilities
 upwind = mdu.FluxBaseUpwindAd(gb=gb, grid_list=bulk_list, param_key=param_key)
 
@@ -291,28 +272,12 @@ psi_bound_bulk = bound_bulk - zeta_faces_bulk
 psi_bulk_m = bulk_cell_rest * psi_m
 krw_faces = upwind(krw_ad(psi_bulk_m), krw_ad(psi_bound_bulk), flux_single_phase)
 
-# zf_bulk_ad = pp.ad.Array(bulk_list[0].face_centers[gb.dim_max() - 1])
-# psi_bc_ad = bound_bulk - zf_bulk_ad
-# krw_faces_ad: pp.ad.Operator = upwind(
-#     krw_ad(psib_m), krw_ad(psi_bc_ad), flux_single_phase_bulk
-# )
-
 # Multiphase Darcy fluxes
 flux = (
     krw_faces * mpfa_bulk.flux * bulk_cell_rest * h
     + krw_faces * mpfa_bulk.bound_flux * bound_bulk
     + krw_faces * mpfa_bulk.bound_flux * bulk_face_rest * proj.mortar_to_primary_int * lmbda
 )
-
-# flux_bulk: pp.ad.Operator = (
-#         krw_faces_ad * mpfa_bulk.flux * h_bulk
-#         + krw_faces_ad * mpfa_bulk.bound_flux * bound_bulk
-#         + krw_faces_ad
-#         * mpfa_bulk.bound_flux
-#         * bulk_face_rest
-#         * proj.mortar_to_primary_int
-#         * lmbda
-# )
 
 # Treatment of source and accumulation terms
 # NOTE: The expression containing the active ad variable (psi_bulk)
@@ -323,31 +288,6 @@ source_bulk = pp.ad.ParameterArray(param_key, "source", grids=bulk_list)
 mass_bulk = pp.ad.MassMatrixAd(param_key, grids=bulk_list)
 
 linearization = "modified_picard"  # linearization of the bulk equations
-# if linearization == "newton":
-#     accum_bulk_active = mass_bulk.mass * theta_ad(psib)
-#     accum_bulk_inactive = mass_bulk.mass * theta_ad(psib_n) * (-1)
-# elif linearization == "modified_picard":
-#     accum_bulk_active = mass_bulk.mass * psib * smc_ad(psib_m)
-#     accum_bulk_inactive = mass_bulk.mass * (
-#             theta_ad(psib_m) - smc_ad(psib_m) * psib_m - theta_ad(psib_n)
-#     )
-# elif linearization == "l_scheme":
-#     L = 0.0025
-#     accum_bulk_active = L * mass_bulk.mass * psib
-#     accum_bulk_inactive = mass_bulk.mass * (
-#             theta_ad(psib_m) - L * psib_m - theta_ad(psib_n)
-#     )
-# else:
-#     raise NotImplementedError(
-#         "Linearization scheme not implemented. Use 'newton', "
-#         "'modified_picard', or 'l_scheme'."
-#     )
-#
-# accumulation_bulk = accum_bulk_active + accum_bulk_inactive
-# conserv_bulk_eq = accumulation_bulk + dt_ad * div_bulk * flux_bulk - dt_ad * source_bulk
-# conserv_bulk_eq.discretize(gb=gb)
-# conserv_bulk_num = conserv_bulk_eq.evaluate(dof_manager=dof_manager).val
-
 if linearization == "newton":
     accum_bulk_active = mass_bulk.mass * theta_ad(bulk_cell_rest * psi)
     accum_bulk_inactive = mass_bulk.mass * theta_ad(bulk_cell_rest * psi_n) * (-1)
@@ -377,9 +317,6 @@ conserv_bulk_eq = accumulation_bulk + dt_ad * div_bulk * flux - dt_ad * source_b
 conserv_bulk_eq.discretize(gb=gb)
 conserv_bulk_num_new = conserv_bulk_eq.evaluate(dof_manager=dof_manager).val
 
-# print(np.linalg.norm(conserv_bulk_num_new - conserv_bulk_num))
-# print()
-
 # %% Governing equations in the fracture
 
 # Get water volume as a function of the hydraulic head, and its first derivative
@@ -389,30 +326,6 @@ vol_cap_ad: pp.ad.Function = fv.volume_capacity(as_ad=True)
 vol = fv.fracture_volume(as_ad=False)
 
 linearization = "newton"  # linearization of the fracture equations
-# if linearization == "newton":
-#     accum_frac_active = vol_ad(h_frac)
-#     accum_frac_inactive = vol_ad(h_frac_n) * (-1)
-# elif linearization == "modified_picard":
-#     accum_frac_active = h_frac * vol_cap_ad(h_frac_m)
-#     accum_frac_inactive = vol_ad(h_frac_m) - vol_cap_ad(h_frac_m) * h_frac_m - vol_ad(h_frac_n)
-# elif linearization == "l_scheme":
-#     L = 0.015
-#     accum_frac_active = L * h_frac
-#     accum_frac_inactive = vol_ad(h_frac_m) - L * h_frac_m - vol_ad(h_frac_n)
-# else:
-#     raise NotImplementedError(
-#         "Linearization scheme not implemented. Use 'newton', "
-#         "'modified_picard', or 'l_scheme'."
-#     )
-#
-# # Retrieve sources from mortar
-# sources_from_mortar = frac_cell_rest * proj.mortar_to_secondary_int * lmbda
-# # Accumulation terms
-# accum_frac = accum_frac_active + accum_frac_inactive
-# # Declare conservation equation
-# conserv_frac_eq = accum_frac - dt_ad * sources_from_mortar
-# conserv_frac_eq.discretize(gb=gb)
-# conserv_frac_num = conserv_frac_eq.evaluate(dof_manager=dof_manager).val
 
 if linearization == "newton":
     accum_frac_active = vol_ad(frac_cell_rest * h)
@@ -447,9 +360,6 @@ conserv_frac_eq = accum_frac - dt_ad * sources_from_mortar
 conserv_frac_eq.discretize(gb=gb)
 conserv_frac_num_new = conserv_frac_eq.evaluate(dof_manager=dof_manager).val
 
-# print(np.linalg.norm(conserv_frac_num_new - conserv_frac_num))
-# print()
-
 # %% Governing equations on the interfaces
 mpfa_global = pp.ad.MpfaAd(param_key, grid_list)
 robin = pp.ad.RobinCouplingAd(param_key, edge_list)
@@ -470,33 +380,6 @@ proj_h_high_m = (
         * lmbda_m
 )
 
-# # Projected bulk pressure traces onto the mortar grid
-# proj_tr_h_bulk = (
-#         proj.primary_to_mortar_avg
-#         * bulk_face_prol
-#         * mpfa_bulk.bound_pressure_cell
-#         * h_bulk
-#         + proj.primary_to_mortar_avg
-#         * bulk_face_prol
-#         * mpfa_bulk.bound_pressure_face
-#         * bulk_face_rest
-#         * proj.mortar_to_primary_int
-#         * lmbda
-# )
-#
-# proj_tr_h_bulk_m = (
-#         proj.primary_to_mortar_avg
-#         * bulk_face_prol
-#         * mpfa_bulk.bound_pressure_cell
-#         * h_bulk_m
-#         + proj.primary_to_mortar_avg
-#         * bulk_face_prol
-#         * mpfa_bulk.bound_pressure_face
-#         * bulk_face_rest
-#         * proj.mortar_to_primary_int
-#         * lmbda_m
-# )
-
 # Get projected ghost fracture hydraulic head onto the adjacent mortar grids
 pfh = mdu.GhostHydraulicHead(gb=gb, ghost_gb=ghost_gb)
 frac_to_mortar_ad: pp.ad.Function = pfh.proj_fra_hyd_head(as_ad=True)
@@ -506,12 +389,6 @@ proj_h_low = frac_to_mortar_ad(frac_cell_rest * h)
 # Array parameter that keeps track of conductive (1) and blocking (0) mortar cells
 # Note that if it is blocking, the whole discrete equation is removed for that mortar cell
 is_conductive = pp.ad.ParameterArray(param_key, "is_conductive", edges=edge_list)
-
-# # Interface flux
-# mortar_flux = robin.mortar_discr * (proj_tr_h_bulk - proj_h_frac) * is_conductive
-# interface_flux_eq = mortar_flux + lmbda
-# interface_flux_eq.discretize(gb=gb)
-# interface_flux_num = interface_flux_eq.evaluate(dof_manager=dof_manager).val
 
 # Interface flux
 mortar_flux = robin.mortar_discr * (proj_h_low - proj_h_high) * is_conductive
@@ -694,14 +571,9 @@ while tsc.time < tsc.time_final:
     # Succesful convergence
     tsc.next_time_step(recompute_solution=False, iterations=itr - 1)
     param_update.update_time_step(tsc.dt)
-    # print(f"Fracture water table height: {d_frac[pp.STATE][node_var][0] - pressure_threshold}")
-    # water_table.append(d_frac[pp.STATE][node_var][0] - pressure_threshold)
-    # water_vol.append(vol(d_frac[pp.STATE][node_var]))
     set_state_as_iterate(gb, node_var, edge_var)
-    vols = vol((frac_cell_rest * h).evaluate(dof_manager).val)
-    print(f"Top Fracture water volume: {vols[1]}")
-    print(f"Point water volume: {vols[2]}")
-    print(f"Bottom Fracture water volume: {vols[0]}")
+    print("Hydraulic heads:", h_lfn.evaluate(dof_manager).val)
+    print("Volumes:", vol(h_lfn.evaluate(dof_manager).val))
     print()
 
     # # Export to ParaView

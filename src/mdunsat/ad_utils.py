@@ -57,11 +57,12 @@ def get_conductive_mortars(
     # cell to be conductive. This is the first condition that we have to check. Otherwise,
     # check if the pressure trace is greater (or equal) than the pressure threshold,
     # if that is the case also promote that cell to conductive.
+    # BUG: Projection of bottom fracture onto zero-dimensional point is wrong.
     for mortar_cell in range(0, tr_hb.val.size):
-        if hf.val[mortar_cell] > (gb.pressure_threshold + zeta[mortar_cell]):
+        if hf.val[mortar_cell] - zeta[mortar_cell] > 0:
             is_conductive[mortar_cell] = 1
         else:
-            if tr_hb.val[mortar_cell] >= (gb.pressure_threshold + zeta[mortar_cell]):
+            if tr_hb.val[mortar_cell] - zeta[mortar_cell] > 0:
                 is_conductive[mortar_cell] = 1
 
     return is_conductive

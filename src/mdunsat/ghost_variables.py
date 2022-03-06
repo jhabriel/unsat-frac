@@ -141,10 +141,8 @@ class GhostHydraulicHead:
             # ad_Array, but its Jacobian remains unchanged. Not sure about the repercusion
             # that this might have. But if we need to do things correctly, we should apply
             # something on the lines of the chunk from above :)
-            dry_cells: np.ndarray[bool] = hfrac_broad.val <= (
-                    self._cc + self._gb.pressure_threshold
-            )
-            hfrac_broad.val[dry_cells] = self._cc[dry_cells] + self._gb.pressure_threshold
+            dry_cells: np.ndarray[bool] = (hfrac_broad.val - self._cc) <= 0
+            hfrac_broad.val[dry_cells] = self._cc[dry_cells]
 
             # Now we are ready to project the hydraulic head onto the mortar grids. To this
             # aim, we first need the relevant subdomain proj and mortar proj.
@@ -164,8 +162,8 @@ class GhostHydraulicHead:
             # Check proper doc above
             broad_matrix: sps.lil_matrix = self._get_broadcasting_matrix()
             hfrac_broad: np.ndarray = broad_matrix * h_frac
-            dry_cells = hfrac_broad < (self._cc + self._gb.pressure_threshold)
-            hfrac_broad[dry_cells] = self._cc[dry_cells] + self._gb.pressure_threshold
+            dry_cells = (hfrac_broad - self._cc) <= 0
+            hfrac_broad[dry_cells] = self._cc[dry_cells]
             cell_prolongation = self._ghost_subdomain_proj.cell_prolongation(
                 grids=self._ghost_low_dim_grids
             ).parse(gb=self._ghost_gb)

@@ -122,7 +122,7 @@ class FractureVolume:
             # the multiplication and thus avoid broadcasting errors
             aper = sps.spdiags(self._aperture, 0, self._N, self._N)
             water_volume: pp.ad.Ad_array = (
-                aper * (hydraulic_head - (self._datum + self._gb.pressure_threshold))
+                aper * (hydraulic_head - self._datum)
             )
 
             # Correct values of water volume accordingly
@@ -135,7 +135,7 @@ class FractureVolume:
             # Here, we don't need to do anything, numpy will take care of correctly
             # broadcasting everything for us
             water_volume: np.ndarray = self._aperture * (
-                    hydraulic_head - (self._datum + self._gb.pressure_threshold)
+                (hydraulic_head - self._datum)
             )
 
             # Correct values of water volume accordingly
