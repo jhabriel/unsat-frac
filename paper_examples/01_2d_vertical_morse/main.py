@@ -326,7 +326,6 @@ vol_cap_ad: pp.ad.Function = fv.volume_capacity(as_ad=True)
 vol = fv.fracture_volume(as_ad=False)
 
 linearization = "newton"  # linearization of the fracture equations
-
 if linearization == "newton":
     accum_frac_active = vol_ad(frac_cell_rest * h)
     accum_frac_inactive = vol_ad(frac_cell_rest * h_n) * (-1)
@@ -364,6 +363,7 @@ conserv_frac_num_new = conserv_frac_eq.evaluate(dof_manager=dof_manager).val
 mpfa_global = pp.ad.MpfaAd(param_key, grid_list)
 robin = pp.ad.RobinCouplingAd(param_key, edge_list)
 
+# Get projected higher-dimensional trace of the hydraulic head onto the mortars
 proj_h_high = (
         proj.primary_to_mortar_avg * mpfa_global.bound_pressure_cell * h
         + proj.primary_to_mortar_avg
@@ -380,10 +380,9 @@ proj_h_high_m = (
         * lmbda_m
 )
 
-# Get projected ghost fracture hydraulic head onto the adjacent mortar grids
+# Get projected lower-dimensional (ghost) hydraulic head onto the mortars
 pfh = mdu.GhostHydraulicHead(gb=gb, ghost_gb=ghost_gb)
 frac_to_mortar_ad: pp.ad.Function = pfh.proj_fra_hyd_head(as_ad=True)
-# proj_h_frac = frac_to_mortar_ad(h_frac)
 proj_h_low = frac_to_mortar_ad(frac_cell_rest * h)
 
 # Array parameter that keeps track of conductive (1) and blocking (0) mortar cells

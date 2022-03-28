@@ -9,7 +9,7 @@ AdArray = pp.ad.Ad_array
 NonAd = Union[Scalar, np.ndarray]
 Edge = Tuple[pp.Grid, pp.Grid]
 
-__all__ = ["FractureVolume", "VanGenuchtenMualem"]
+__all__ = ["SWRC", "FractureVolume", "VanGenuchtenMualem"]
 
 
 class FractureVolume:
@@ -169,6 +169,339 @@ class FractureVolume:
                     vol_capacity[idx] = 0
 
         return vol_capacity
+
+
+class SWRC:
+
+    def __init__(self, param_key: str, gb: pp.GridBucket,  grid_list: List[pp.Grid]):
+
+        self.kw = param_key
+        self.grid_list = grid_list
+        self.gb = gb
+
+        # Concatanate van Genuchten parameters
+        val_alpha_vg_cc = []
+        val_theta_s_cc = []
+        val_theta_r_cc = []
+        val_n_vg_cc = []
+        val_m_vg_cc = []
+
+        val_alpha_vg_fc = []
+        val_theta_s_fc = []
+        val_theta_r_fc = []
+        val_n_vg_fc = []
+        val_m_vg_fc = []
+
+        for g in self.grid_list:
+            d = self.gb.node_props(g)
+            # Cell-centered values
+            cc_ones = np.ones(g.num_cells)
+            val_alpha_vg_cc.append(d[pp.PARAMETERS][self.kw]["alpha_vg"] * cc_ones)
+            val_theta_s_cc.append(d[pp.PARAMETERS][self.kw]["theta_s"] * cc_ones)
+            val_theta_r_cc.append(d[pp.PARAMETERS][self.kw]["theta_r"] * cc_ones)
+            val_n_vg_cc.append(d[pp.PARAMETERS][self.kw]["n_vg"] * cc_ones)
+            val_m_vg_cc.append(d[pp.PARAMETERS][self.kw]["m_vg"] * cc_ones)
+            # Face-centered values
+            fc_ones = np.ones(g.num_faces)
+            val_alpha_vg_fc.append(d[pp.PARAMETERS][self.kw]["alpha_vg"] * fc_ones)
+            val_theta_s_fc.append(d[pp.PARAMETERS][self.kw]["theta_s"] * fc_ones)
+            val_theta_r_fc.append(d[pp.PARAMETERS][self.kw]["theta_r"] * fc_ones)
+            val_n_vg_fc.append(d[pp.PARAMETERS][self.kw]["n_vg"] * fc_ones)
+            val_m_vg_fc.append(d[pp.PARAMETERS][self.kw]["m_vg"] * fc_ones)
+
+        self._alpha_vg_cc = np.hstack([v for v in val_alpha_vg_cc])
+        self._theta_s_cc = np.hstack([v for v in val_theta_s_cc])
+        self._theta_r_cc = np.hstack([v for v in val_theta_r_cc])
+        self._n_vg_cc = np.hstack([v for v in val_n_vg_cc])
+        self._m_vg_cc = np.hstack([v for v in val_m_vg_cc])
+
+        self._alpha_vg_fc = np.hstack([v for v in val_alpha_vg_fc])
+        self._theta_s_fc = np.hstack([v for v in val_theta_s_fc])
+        self._theta_r_fc = np.hstack([v for v in val_theta_r_fc])
+        self._n_vg_fc = np.hstack([v for v in val_n_vg_fc])
+        self._m_vg_fc = np.hstack([v for v in val_m_vg_fc])
+
+    # Public methods
+    def water_content(
+            self, as_ad: bool = True, cc: bool = True,
+    ) -> Union["_water_content_cc", "_water_content_fc", pp.ad.Function]:
+        """
+        Water content as a function of the pressure head.
+
+        Parameters:
+            as_ad (bool): If True the function is wrapped as a pp.ad.Function. If False,
+            the function is passed a regular function.
+
+        Returns:
+            regular classmethod or pp.ad.Function corresponding to the water content
+
+        """
+        if as_ad:
+            if cc:
+                return pp.ad.Function(self._water_content_cc, name="water content")
+            else:
+                return pp.ad.Function(self._water_content_fc, name="water content")
+        else:
+            if cc:
+                return self._water_content_cc
+            else:
+                return self._water_content_fc
+
+    def relative_permeability(
+        self, as_ad: bool = True, cc: bool = True
+    ) -> Union["_relative_permeability_cc", "_relative_permeability_fc",  pp.ad.Function]:
+        """
+        Relative permeability as a function of the pressure head.
+
+        Parameters:
+            as_ad (bool): If True the function is wrapped as a pp.ad.Function. If False,
+            the function is passed a regular function.
+
+        Returns:
+            regular classmethod or pp.ad.Function corresponding to the relative permeability
+
+        """
+        if as_ad:
+            if cc:
+                return pp.ad.Function(
+                    self._relative_permeability_cc, name="relative permeability"
+                )
+            else:
+                return pp.ad.Function(
+                    self._relative_permeability_fc, name="relative permeability"
+                )
+        else:
+            if cc:
+                return self._relative_permeability_cc
+            else:
+                return self._relative_permeability_fc
+
+    def moisture_capacity(
+        self, as_ad: bool = True, cc: bool = True,
+    ) -> Union["_moisture_capacity_cc", "_moisture_capacity_fc", pp.ad.Function]:
+        """
+        Specific moisture capacity as a function of the pressure head.
+
+        Parameters:
+            as_ad (bool): If True the function is wrapped as a pp.ad.Function. If False,
+            the function is passed a regular function.
+
+        Returns:
+            regular classmethod or pp.ad.Function corresponding to the moisture capacity
+
+        """
+        if as_ad:
+            if cc:
+                return pp.ad.Function(
+                    self._moisture_capacity_cc, name="specific moisture capacity"
+                )
+            else:
+                return pp.ad.Function(
+                    self._moisture_capacity_fc, name="specific moisture capacity"
+                )
+        else:
+            if cc:
+                return self._moisture_capacity_cc
+            else:
+                return self._moisture_capacity_fc
+
+    # Private methods
+    def _water_content_cc(self, psi):
+        if isinstance(psi, pp.ad.Ad_array):
+            is_unsat = self._is_unsat(psi.val)
+            is_sat = 1 - is_unsat
+            numer = self._theta_s_cc - self._theta_r_cc
+            denom = (
+                    1 + (pp.ad.abs(psi) * self._alpha_vg_cc) ** self._n_vg_cc
+                  ) ** self._m_vg_cc
+            theta = (
+                    denom ** (-1) * numer + self._theta_r_cc
+                    ) * is_unsat + self._theta_s_cc * is_sat
+        else:  # typically int, float, or np.ndarray
+            is_unsat = self._is_unsat(psi)
+            is_sat = 1 - is_unsat
+            numer = self._theta_s_cc - self._theta_r_cc
+            denom = (
+                    1 + (self._alpha_vg_cc * np.abs(psi)) ** self._n_vg_cc
+                  ) ** self._m_vg_cc
+            theta = (numer / denom + self._theta_r_cc) * is_unsat + self._theta_s_cc * is_sat
+
+        return theta
+
+    def _water_content_fc(self, psi):
+        if isinstance(psi, pp.ad.Ad_array):
+            is_unsat = self._is_unsat(psi.val)
+            is_sat = 1 - is_unsat
+            numer = self._theta_s_fc - self._theta_r_fc
+            denom = (
+                    1 + (pp.ad.abs(psi) * self._alpha_vg_fc) ** self._n_vg_fc
+                  ) ** self._m_vg_fc
+            theta = (
+                    denom ** (-1) * numer + self._theta_r_fc
+                    ) * is_unsat + self._theta_s_fc * is_sat
+        else:  # typically int, float, or np.ndarray
+            is_unsat = self._is_unsat(psi)
+            is_sat = 1 - is_unsat
+            numer = self._theta_s_fc - self._theta_r_fc
+            denom = (
+                    1 + (self._alpha_vg_fc * np.abs(psi)) ** self._n_vg_fc
+                  ) ** self._m_vg_fc
+            theta = (numer / denom + self._theta_r_fc) * is_unsat + self._theta_s_fc * is_sat
+
+        return theta
+
+    def _effective_saturation_cc(
+        self, psi: Union[AdArray, NonAd]
+    ) -> Union[AdArray, NonAd]:
+        """Effective saturation as a function of the pressure head.
+
+        Parameters:
+            psi (Ad-array or non-ad object): pressure head
+        Returns:
+            s_eff (Ad-array or non-ad object): effective (normalized) saturation
+        """
+
+        numer = self._water_content_cc(psi) + self._theta_r_cc * (-1)
+        denom = self._theta_s_cc + self._theta_r_cc * (-1)
+        s_eff = denom ** (-1) * numer
+
+        return s_eff
+
+    def _effective_saturation_fc(
+        self, psi: Union[AdArray, NonAd]
+    ) -> Union[AdArray, NonAd]:
+        """Effective saturation as a function of the pressure head.
+
+        Parameters:
+            psi (Ad-array or non-ad object): pressure head
+        Returns:
+            s_eff (Ad-array or non-ad object): effective (normalized) saturation
+        """
+
+        numer = self._water_content_fc(psi) + self._theta_r_fc * (-1)
+        denom = self._theta_s_fc + self._theta_r_fc * (-1)
+        s_eff = denom ** (-1) * numer
+
+        return s_eff
+
+    def _relative_permeability_cc(self, psi: NonAd) -> NonAd:
+        """Relative permeability as a function of the pressure head.
+
+        Parameters:
+            psi (non-ad object): pressure head
+        Returns:
+            krw (non-ad object): water relative permeability
+        """
+
+        # TODO: Add possibility to pass an pp.ad.Array
+        if isinstance(psi, pp.ad.Ad_array):
+            raise TypeError("Pressure head cannot be AD. Expected non-ad object.")
+        else:  # typically int, float, or np.ndarray
+            s_eff = self._effective_saturation_cc(psi)
+            krw = s_eff ** 0.5 * (1 - (1 - s_eff ** (1 / self._m_vg_cc)) ** self._m_vg_cc) ** 2
+
+        return krw
+
+    def _relative_permeability_fc(self, psi: NonAd) -> NonAd:
+        """Relative permeability as a function of the pressure head.
+
+        Parameters:
+            psi (non-ad object): pressure head
+        Returns:
+            krw (non-ad object): water relative permeability
+        """
+
+        # TODO: Add possibility to pass an pp.ad.Array
+        if isinstance(psi, pp.ad.Ad_array):
+            raise TypeError("Pressure head cannot be AD. Expected non-ad object.")
+        else:  # typically int, float, or np.ndarray
+            s_eff = self._effective_saturation_fc(psi)
+            krw = s_eff ** 0.5 * (1 - (1 - s_eff ** (1 / self._m_vg_fc)) ** self._m_vg_fc) ** 2
+
+        return krw
+
+    def _moisture_capacity_cc(self, psi: NonAd) -> NonAd:
+        """Specific moisture capacity as a function of the pressure head
+
+        Parameters:
+            psi (non-ad object): pressure head
+        Returns:
+            moist_capacity (non-ad object): moisture capacitiy, i.e., d(theta)/d(psi).
+        """
+
+        # TODO: Add possibility to pass an pp.ad.Array
+        if isinstance(psi, pp.ad.Ad_array):
+            raise TypeError("Pressure head cannot be AD. Expected non-ad object.")
+        else:  # typically int, float, or np.ndarray
+            is_unsat = self._is_unsat(psi)
+            is_sat = 1 - is_unsat
+            num = (
+                -self._m_vg_cc
+                * self._n_vg_cc
+                * (self._theta_s_cc - self._theta_r_cc)
+                * (self._alpha_vg_cc * np.abs(psi)) ** self._n_vg_cc
+            )
+            den = psi * (
+                (self._alpha_vg_cc * np.abs(psi)) ** self._n_vg_cc + 1
+            ) ** (self._m_vg_cc + 1)
+            # Here, we have to be particularly careful with division by zero. If zero is
+            # encountered in the denominator, we force the moisture capacity to be zero.
+            moist_capacity = (
+                np.divide(num, den, out=np.zeros_like(num), where=den != 0)
+                * self._is_unsat(psi)
+                + 0 * is_sat
+            )
+
+        return moist_capacity
+
+    def _moisture_capacity_fc(self, psi: NonAd) -> NonAd:
+        """Specific moisture capacity as a function of the pressure head
+
+        Parameters:
+            psi (non-ad object): pressure head
+        Returns:
+            moist_capacity (non-ad object): moisture capacitiy, i.e., d(theta)/d(psi).
+        """
+
+        # TODO: Add possibility to pass an pp.ad.Array
+        if isinstance(psi, pp.ad.Ad_array):
+            raise TypeError("Pressure head cannot be AD. Expected non-ad object.")
+        else:  # typically int, float, or np.ndarray
+            is_unsat = self._is_unsat(psi)
+            is_sat = 1 - is_unsat
+            num = (
+                -self._m_vg_fc
+                * self._n_vg_fc
+                * (self._theta_s_fc - self._theta_r_fc)
+                * (self._alpha_vg_fc * np.abs(psi)) ** self._n_vg_fc
+            )
+            den = psi * (
+                (self._alpha_vg_fc * np.abs(psi)) ** self._n_vg_fc + 1
+            ) ** (self._m_vg_fc + 1)
+            # Here, we have to be particularly careful with division by zero. If zero is
+            # encountered in the denominator, we force the moisture capacity to be zero.
+            moist_capacity = (
+                np.divide(num, den, out=np.zeros_like(num), where=den != 0)
+                * self._is_unsat(psi)
+                + 0 * is_sat
+            )
+
+        return moist_capacity
+
+    # Helpers
+    @staticmethod
+    def _is_unsat(pressure_head: NonAd) -> NonAd:
+        """Determines whether is saturated or not based on the value of the pressure head.
+
+        Parameters
+            pressure_head (non-ad): containing the values of the pressure heads.
+        Returns
+            non-ad: 1 if pressure_head < 0, and 0 otherwise.
+        """
+        if isinstance(pressure_head, pp.ad.Ad_array):
+            raise TypeError("Pressure head cannot be AD. Expected non-ad object.")
+        else:
+            return 1 - pp.ad.heaviside(pressure_head, 1)
 
 
 class VanGenuchtenMualem:
