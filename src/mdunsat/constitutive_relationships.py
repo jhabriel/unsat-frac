@@ -42,14 +42,20 @@ class FractureVolume:
         frac_vol = []
         aperture = []
         datum = []
+        sin_alpha = []
+        width = []
         for g in self._grids:
             d = self._gb.node_props(g)
             frac_vol.append(g.cell_volumes * d[pp.PARAMETERS][self._kw]["aperture"])
             aperture.append(d[pp.PARAMETERS][self._kw]["aperture"])
             datum.append(d[pp.PARAMETERS][self._kw]["datum"])
+            sin_alpha.append(d[pp.PARAMETERS][self._kw]["sin_alpha"])
+            width.append(d[pp.PARAMETERS][self._kw]["width"])
         self._fracvol: np.ndarray = np.array(frac_vol)
         self._aperture: np.ndarray = np.array(aperture)
         self._datum: np.ndarray = np.array(datum)
+        self._sin_alpha: np.ndarray = np.array(sin_alpha)
+        self._width: np.ndarray = np.array(width)
 
     def __repr__(self) -> str:
         return "Water volume as a function of hydraulic head."
@@ -121,29 +127,33 @@ class FractureVolume:
             # We need to transform the aperture into a diagonal matrix to be able to perform
             # the multiplication and thus avoid broadcasting errors
             aper = sps.spdiags(self._aperture, 0, self._N, self._N)
+            sin_alpha_inv = sps.spdiags(self._sin_alpha ** (-1), 0, self._N, self._N)
+            width = sps.spdiags(self._width, 0, self._N, self._N)
             water_volume: pp.ad.Ad_array = (
-                aper * (hydraulic_head - self._datum)
+                aper * width * sin_alpha_inv * (hydraulic_head - self._datum)
             )
 
             # Correct values of water volume accordingly
-            for idx, _ in enumerate(self._grids):
+            #for idx, _ in enumerate(self._grids):
                 # If the water volume > the fracture or fracture intersection volume, then
                 # set the volume = fracture_volume
-                if water_volume.val[idx] > self._fracvol[idx]:
-                    water_volume.val[idx] = self._fracvol[idx]
+                #if water_volume.val[idx] > self._fracvol[idx]:
+                    #pass
+                    #water_volume.val[idx] = self._fracvol[idx]
         else:
             # Here, we don't need to do anything, numpy will take care of correctly
             # broadcasting everything for us
-            water_volume: np.ndarray = self._aperture * (
-                (hydraulic_head - self._datum)
+            water_volume: np.ndarray = self._aperture * self._width * (
+                (hydraulic_head - self._datum) / self._sin_alpha
             )
 
             # Correct values of water volume accordingly
-            for idx in range(hydraulic_head.size):
+            #for idx in range(hydraulic_head.size):
                 # If the water volume > the fracture or fracture intersection volume, then
                 # set the volume = fracture_volume
-                if water_volume[idx] > self._fracvol[idx]:
-                    water_volume[idx] = self._fracvol[idx]
+                #if water_volume[idx] > self._fracvol[idx]:
+                    #pass
+                    #water_volume[idx] = self._fracvol[idx]
         return water_volume
 
     def _volume_capacity(self, hydraulic_head: Union[AdArray, NonAd]) -> NonAd:
