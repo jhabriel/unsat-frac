@@ -38,3 +38,4 @@ paper_examples/01_2d_vertical_fracture/plotting.py
 *.plk
 *.geo_unrolled
 *.msh
+paper_examples/01_2d_vertical_fracture/plotting.py
