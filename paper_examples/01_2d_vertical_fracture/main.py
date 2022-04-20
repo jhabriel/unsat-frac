@@ -111,7 +111,6 @@ for g, d in gb:
         )
         bc_values: np.ndarray = np.zeros(g.num_faces)
         bc_values[top_left] = 2.5 + y_max  # -15 (pressure_head) + y_max (elevation_head)
-        #bc_values[bottom] = -500 + y_min  # -500 (pressure_head) + y_min (elevation_head)
 
         # Hydraulic conductivity
         K_SAT: np.ndarray = 0.00922 * np.ones(g.num_cells)  # conductive bulk cells
@@ -569,17 +568,3 @@ while tsc.time < tsc.time_final:
         export_counter += 1
         exporter_ghost.write_vtu([node_var, "pressure_head", edge_var],
                                  time_step=export_counter)
-
-#%% Export results
-iters.insert(0, 0)  # insert 0 at the beginning of the list
-d = dict()
-d["time"] = np.array(times) / 3600  # time in [hours]
-d["water_volume"] = np.array(water_vol)  # water volume in [cm^3]
-d["water_table"] = np.array(water_table)  # fracture water table in [cm]
-d["time_step"] = np.array(dts)  # time steps in [s]
-d["iterations"] = np.array(iters)  # iterations
-
-file_name = "out.plk"
-open_file = open(file_name, "wb")
-pickle.dump(d, open_file)
-open_file.close()
