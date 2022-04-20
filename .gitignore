@@ -32,3 +32,12 @@ bin/*
 *.ipe
 *.mp4
 *.avi
+*.vtu
+*.pvd
+
+out/**
+experimental/**
+examples/**
+1d_2d_vertical_morse/**
+3d_3d_fracture_network/**
+
