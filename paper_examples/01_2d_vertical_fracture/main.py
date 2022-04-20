@@ -15,7 +15,7 @@ from mdunsat.ad_utils import (
 
 # %% Retrieve grid buckets
 gfo = GridGenerator(
-    mesh_args={"mesh_size_frac": 4, "mesh_size_bound": 5},
+    mesh_args={"mesh_size_frac": 2, "mesh_size_bound": 2.5},
     csv_file="network.csv",
     domain={"xmin": 0, "ymin": 0, "xmax": 100, "ymax": 100},
     constraints=[1, 2, 3, 4],
@@ -37,7 +37,7 @@ ghost_edge_list = gfo.get_edge_list(ghost_gb)
 # export_mesh.write_vtu(ghost_gb)
 
 # %% Time parameters
-schedule = list(np.linspace(0, 4 * pp.HOUR, 60, dtype=np.int32))
+schedule = list(np.linspace(0, 4800, 200, dtype=np.int32))
 tsc = pp.TimeSteppingControl(
     schedule=schedule,
     dt_init=1,
@@ -68,7 +68,7 @@ for _, d in gb.edges():
 # Parameter assignment
 param_update = mdu.ParameterUpdate(gb, param_key)  # object to update parameters
 
-pressure_threshold = -22.1  # [cm]
+pressure_threshold = 0  # [cm]
 for g, d in gb:
     if g.dim == gb.dim_max():
         # For convinience, store values of bounding box
@@ -106,12 +106,11 @@ for g, d in gb:
         bc_faces = g.get_boundary_faces()
         bc_type = np.array(bc_faces.size * ["neu"])
         bc_type[np.in1d(bc_faces, top_left)] = "dir"
-        #bc_type[np.in1d(bc_faces, bottom)] = "dir"
         bc: pp.BoundaryCondition = pp.BoundaryCondition(
             g, faces=bc_faces, cond=list(bc_type)
         )
         bc_values: np.ndarray = np.zeros(g.num_faces)
-        bc_values[top_left] = -15 + y_max  # -15 (pressure_head) + y_max (elevation_head)
+        bc_values[top_left] = 2.5 + y_max  # -15 (pressure_head) + y_max (elevation_head)
         #bc_values[bottom] = -500 + y_min  # -500 (pressure_head) + y_min (elevation_head)
 
         # Hydraulic conductivity
@@ -141,6 +140,8 @@ for g, d in gb:
             "aperture": 0.1,
             "datum": np.min(g.face_centers[gb.dim_max() - 1]),
             "elevation": g.cell_centers[gb.dim_max() - 1],
+            "sin_alpha": 1.0,
+            "width": 1.0,
         }
         pp.initialize_data(g, d, param_key, specified_parameters)
 
@@ -442,7 +443,7 @@ exporter_ghost.write_vtu([node_var, "pressure_head", edge_var], time_step=0)
 # %% Time loop
 total_iteration_counter: int = 0
 iters: list = []
-abs_tol: float = 1e-7
+abs_tol: float = 1e-6
 is_mortar_conductive: np.ndarray = np.zeros(gb.num_mortar_cells(), dtype=np.int8)
 control_faces: np.ndarray = is_mortar_conductive
 
@@ -535,7 +536,7 @@ while tsc.time < tsc.time_final:
         f"Fracture water volume: {vol(d_frac[pp.STATE][node_var])[0]}"
     )
     water_table.append(d_frac[pp.STATE][node_var][0] - pressure_threshold)
-    water_vol.append(vol(d_frac[pp.STATE][node_var]))
+    water_vol.append(vol(d_frac[pp.STATE][node_var])[0])
     set_state_as_iterate(gb, node_var, edge_var)
     print()
 
