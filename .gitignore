@@ -32,3 +32,5 @@ bin/*
 *.ipe
 *.mp4
 *.avi
+*.vtu
+*.pvd
