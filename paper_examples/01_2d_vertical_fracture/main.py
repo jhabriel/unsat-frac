@@ -37,7 +37,7 @@ ghost_edge_list = gfo.get_edge_list(ghost_gb)
 # export_mesh.write_vtu(ghost_gb)
 
 # %% Time parameters
-schedule = list(np.linspace(0, 4800, 200, dtype=np.int32))
+schedule = list(np.linspace(0, 4800, 100, dtype=np.int32))
 tsc = pp.TimeSteppingControl(
     schedule=schedule,
     dt_init=1,
@@ -452,6 +452,7 @@ while tsc.time < tsc.time_final:
     iteration_counter: int = 0
     residual_norm: float = 1.0
     rel_res: float = 1.0
+    print(f"Time: {tsc.time}")
 
     # Solver loop
     while iteration_counter <= tsc.iter_max and not residual_norm < abs_tol:
@@ -468,18 +469,20 @@ while tsc.time < tsc.time_final:
         else:
             initial_residual_norm = max(residual_norm, initial_residual_norm)
         rel_res = residual_norm / initial_residual_norm
-        print(
-            "time",
-            tsc.time,
-            "iter",
-            iteration_counter,
-            "res",
-            residual_norm,
-            "rel_res",
-            rel_res,
-            "dt",
-            tsc.dt,
-        )
+
+        # Uncomment for full info
+        # print(
+        #     "time",
+        #     tsc.time,
+        #     "iter",
+        #     iteration_counter,
+        #     "res",
+        #     residual_norm,
+        #     "rel_res",
+        #     rel_res,
+        #     "dt",
+        #     tsc.dt,
+        # )
 
         # Prepare next iteration
         iteration_counter += 1
@@ -507,10 +510,11 @@ while tsc.time < tsc.time_final:
     )
     if control_faces.sum() == 0 and is_mortar_conductive.sum() > 0:
         param_update.update_mortar_conductivity_state(is_mortar_conductive, edge_list)
-        print(
-            f"The faces {np.where(is_mortar_conductive)[0]} are saturated. "
-            f"Solution will be recomputed."
-        )
+        # print(
+        #     f"The faces {np.where(is_mortar_conductive)[0]} are saturated. "
+        #     f"Solution will be recomputed."
+        # )
+        print("Encountered saturated mortar cells. Recomputing solution")
         control_faces = is_mortar_conductive
         set_iterate_as_state(gb, node_var, edge_var)
         tsc.time -= tsc.dt  # correct time since we are going to recompute the solution
