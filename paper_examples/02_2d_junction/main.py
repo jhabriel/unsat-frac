@@ -15,42 +15,55 @@ from mdunsat.ad_utils import (
 
 # %% Retrieve grid buckets
 gfo = GridGenerator(
-    mesh_args={"mesh_size_frac": 10, "mesh_size_bound": 10},
+    mesh_args={"mesh_size_frac": 2, "mesh_size_bound": 2.5},
     csv_file="network.csv",
     domain={"xmin": 0, "ymin": 0, "xmax": 100, "ymax": 100},
-    constraints=[2, 3, 4, 5],
+    constraints=[3, 4],
 )
+
+gfo.get_grid_buckets()
+
 gb, ghost_gb = gfo.get_grid_buckets()
 
 grid_list = gfo.grid_list(gb)
 bulk_list = gfo.bulk_grid_list(gb)
 frac_list = gfo.fracture_grid_list(gb)
-lfn_list = gfo.local_fracture_network__grid_list(gb)
+lfn_list = gfo.local_fracture_network_grid_list(gb)
 edge_list = gfo.edge_list(gb)
 frac_edge_list = gfo.fracture_edge_list(gb)
+
+g_bulk = gb.grids_of_dimension(2)[0]
+g_top = gb.grids_of_dimension(1)[0]
+g_left = gb.grids_of_dimension(1)[1]
+g_right = gb.grids_of_dimension(1)[2]
+
+d_bulk = gb.node_props(g_bulk)
+d_top = gb.node_props(g_top)
+d_left = gb.node_props(g_left)
+d_right = gb.node_props(g_right)
 
 ghost_grid_list = gfo.grid_list(ghost_gb)
 ghost_bulk_list = gfo.bulk_grid_list(ghost_gb)
 ghost_frac_list = gfo.fracture_grid_list(ghost_gb)
-ghost_lfn_list = gfo.local_fracture_network__grid_list(ghost_gb)
+ghost_lfn_list = gfo.local_fracture_network_grid_list(ghost_gb)
 ghost_edge_list = gfo.edge_list(ghost_gb)
 ghost_frac_edge_list = gfo.fracture_edge_list(ghost_gb)
 
 # Uncomment to export grid
-# export_mesh = pp.Exporter(ghost_gb, file_name="grid", folder_name="out")
+# export_mesh = pp.Exporter(ghost_gb, file_name="juntion_grid", folder_name="out")
 # export_mesh.write_vtu(ghost_gb)
 
 # %% Time parameters
-schedule = list(np.linspace(0, 20, 2, dtype=np.int32))
+schedule = list(np.linspace(0, 900, 100))
 tsc = pp.TimeSteppingControl(
     schedule=schedule,
-    dt_init=0.01,
-    dt_min_max=(0.01, 0.25 * pp.HOUR),
-    iter_max=20,
-    iter_optimal_range=(4, 7),
+    dt_init=0.1,
+    dt_min_max=(0.001, 1 * pp.HOUR),
+    iter_max=30,
+    iter_optimal_range=(10, 15),
     iter_lowupp_factor=(1.3, 0.7),
     recomp_factor=0.5,
-    recomp_max=12,
+    recomp_max=30,
     print_info=True,
 )
 times = [tsc.time]
@@ -72,7 +85,11 @@ for _, d in gb.edges():
 # Parameter assignment
 param_update = mdu.ParameterUpdate(gb, param_key)  # object to update parameters
 
+K_SAT = 0.00922
+
 for g, d in gb:
+
+    # Set parameters for the bulk
     if g.dim == gb.dim_max():
         # For convinience, store values of bounding box
         x_min: float = gb.bounding_box()[0][0]
@@ -95,31 +112,26 @@ for g, d in gb:
 
         # Cell indices corresponding to the blocking fractures
         blocking_idx: list = [
-            cc[0] < (0.50 * x_max),
-            cc[0] > (0.30 * x_max),
             cc[1] < (0.80 * y_max),
-            cc[1] > (0.60 * y_max),
+            cc[1] > (0.70 * y_max),
         ]
         mult_cond: bool = np.logical_and(blocking_idx[0], blocking_idx[1])
-        mult_cond: bool = np.logical_and(blocking_idx[2], mult_cond)
-        mult_cond: bool = np.logical_and(blocking_idx[3], mult_cond)
         blocking_cells: np.ndarray = np.where(mult_cond)[0]
 
         # Boundary conditions
         bc_faces = g.get_boundary_faces()
         bc_type = np.array(bc_faces.size * ["neu"])
-        bc_type[np.in1d(bc_faces, top_left)] = "dir"
         bc = pp.BoundaryCondition(g, faces=bc_faces, cond=list(bc_type))
         bc_values = np.zeros(g.num_faces)
-        bc_values[top_left] = 2 + y_max  # -15 (pressure_head) + y_max (elevation_head)
+        bc_values[top] = -0.05
 
         # Saturatted hydraulic conductivity
-        K_SAT: np.ndarray = 0.00922 * np.ones(g.num_cells)  # conductive bulk cells
-        K_SAT[mult_cond] = 5.55E-6  # hydraulic conductivity of blocking cells
+        bulk_perm = K_SAT * np.ones(g.num_cells)  # conductive bulk cells
+        bulk_perm[mult_cond] = 5.55E-11  # hydraulic conductivity of blocking cells
 
         # Initialize bulk data
-        param: dict = {
-            "second_order_tensor": pp.SecondOrderTensor(K_SAT),  # [cm/s]
+        specified_parameters: dict = {
+            "second_order_tensor": pp.SecondOrderTensor(bulk_perm),  # [cm/s]
             "bc": bc,
             "bc_values": bc_values,
             "source": np.zeros(g.num_cells),
@@ -141,6 +153,8 @@ for g, d in gb:
         bc_type = bc_faces.size * ["neu"]
         bc = pp.BoundaryCondition(g, faces=bc_faces, cond=bc_type)
         specified_parameters = {
+            "sin_alpha": gfo.fracture_sin_alpha(g),
+            "width": 1.0,
             "aperture": 0.1,
             "bc": bc,
             "bc_values": np.zeros(g.num_faces),
@@ -150,9 +164,11 @@ for g, d in gb:
         }
         pp.initialize_data(g, d, param_key, specified_parameters)
 
-    # Set parameters for 0D points
+    # Set dummy parameters for 0D points
     else:
         specified_parameters = {
+            "width": 1.0,
+            "sin_alpha": 1.0,
             "aperture": 0.02,
             "datum": np.min(g.cell_centers[gb.dim_max() - 1]),
             "elevation": g.cell_centers[gb.dim_max() - 1],
@@ -168,22 +184,21 @@ for e, d in gb.edges():
     zeros = np.zeros(mg.num_cells)
     g_sec, _ = gb.nodes_of_edge(e)
     d_sec = gb.node_props(g_sec)
-    time_scale_factor = 2
-    aperture = d_sec[pp.PARAMETERS][param_key]["aperture"]  # [cm]
-    sat_conductivity = 0.00922  # [cm/s]
-    sat_normal_diffusivity = (sat_conductivity / (2 * aperture)) * ones  # [1/s]
+    aperture = d_sec[pp.PARAMETERS][param_key]["aperture"]
+    sat_normal_diffusivity = (K_SAT / (2 * aperture)) * ones  # [1/s]
+    is_conductive = zeros
     if mg.dim == gb.dim_max() - 1:
         data = {
             "sat_normal_diffusivity": sat_normal_diffusivity,
             "normal_diffusivity": sat_normal_diffusivity,
-            "is_conductive": zeros,
+            "is_conductive": is_conductive,
             "elevation": mg.cell_centers[gb.dim_max() - 1],
         }
     else:
         data = {
-            "sat_normal_diffusivity": sat_normal_diffusivity * time_scale_factor,
-            "normal_diffusivity": sat_normal_diffusivity * time_scale_factor,
-            "is_conductive": ones,
+            "sat_normal_diffusivity": 0,
+            "normal_diffusivity": 0,
+            "is_conductive": is_conductive,
             "elevation": mg.cell_centers[gb.dim_max() - 1],
         }
     pp.initialize_data(mg, d, param_key, data)
@@ -191,7 +206,10 @@ for e, d in gb.edges():
 # %% Set initial states
 for g, d in gb:
     if g.dim == gb.dim_max():
-        pp.set_state(d, state={node_var: -30 + d[pp.PARAMETERS][param_key]["elevation"]})
+        top_cells = g.cell_centers[1] > 80
+        h0 = -500 + d[pp.PARAMETERS][param_key]["elevation"]
+        h0[top_cells] = -20 + d[pp.PARAMETERS][param_key]["elevation"][top_cells]
+        pp.set_state(d, state={node_var: h0})
         pp.set_iterate(d, iterate={node_var: d[pp.STATE][node_var]})
     else:
         pp.set_state(d, state={node_var: d[pp.PARAMETERS][param_key]["datum"]})
@@ -297,7 +315,7 @@ elif linearization == "modified_picard":
             (bulk_cell_rest * psi_m) - theta_ad(bulk_cell_rest * psi_n)
     )
 elif linearization == "l_scheme":
-    L = 0.0025
+    L = 0.001
     accum_bulk_active = L * mass_bulk.mass * (bulk_cell_rest * psi)
     accum_bulk_inactive = mass_bulk.mass * (
             theta_ad(bulk_cell_rest * psi_m)
@@ -401,93 +419,87 @@ equation_manager.equations.update(eqs)
 equation_manager.discretize(gb)
 
 # %% Initialize exporter. Note that we use the ghost grid rather than the physical one
-# d_bulk = gb.node_props(bulk_list[0])
-# d_bulk_ghost = ghost_gb.node_props(ghost_bulk_list[0])
-# z_bulk = bulk_list[0].cell_centers[1]
-#
-# d_frac_bottom = gb.node_props(frac_list[0])
-# d_frac_ghost_bottom = ghost_gb.node_props(ghost_frac_list[0])
-# z_frac_bottom = frac_list[0].cell_centers[1]
-# z_frac_ghost_bottom = ghost_frac_list[0].cell_centers[1]
-#
-# d_frac_top = gb.node_props(frac_list[1])
-# d_frac_ghost_top = ghost_gb.node_props(ghost_frac_list[1])
-# z_frac_top = frac_list[1].cell_centers[1]
-# z_frac_ghost_top = ghost_frac_list[1].cell_centers[1]
-#
-# d_point = gb.node_props(lfn_list[-1])
-# d_point_ghost = ghost_gb.node_props(ghost_lfn_list[-1])
-#
-# d_edge_bottom = gb.edge_props(edge_list[0])
-# d_edge_ghost_bottom = ghost_gb.edge_props(ghost_edge_list[0])
-#
-# d_edge_top = gb.edge_props(edge_list[1])
-# d_edge_ghost_top = ghost_gb.edge_props(ghost_edge_list[1])
-#
-# # # Set state in bulk ghost grid
-# pp.set_state(
-#     data=d_bulk_ghost,
-#     state={
-#         node_var: d_bulk[pp.STATE][node_var],
-#     },
-# )
-#
-# # Set state in fracture ghost grids
-# pp.set_state(
-#     data=d_frac_ghost_bottom,
-#     state={
-#         node_var: d_frac_bottom[pp.PARAMETERS][param_key]["datum"]
-#         * np.ones(ghost_frac_list[0].num_cells),
-#     },
-# )
-# pp.set_state(
-#     data=d_frac_ghost_top,
-#     state={
-#         node_var: d_frac_top[pp.PARAMETERS][param_key]["datum"]
-#         * np.ones(ghost_frac_list[1].num_cells),
-#     },
-# )
-#
-# pp.set_state(
-#     data=d_point_ghost,
-#     state={
-#         node_var: 0
-#     }
-#
-# )
-#
-#
-# # Set state in edges
-# pp.set_state(
-#     data=d_edge_ghost_top,
-#     state={
-#         edge_var: d_edge_top[pp.STATE][edge_var]
-#     }
-# )
-#
-# pp.set_state(
-#     data=d_edge_ghost_bottom,
-#     state={
-#         edge_var: d_edge_bottom[pp.STATE][edge_var]
-#     }
-# )
-#
-#
-# # # Correct values of pressure head in the fracture if negative
-# # for val in d_frac_ghost[pp.STATE]["pressure_head"] <= 0:
-# #     d_frac_ghost[pp.STATE]["pressure_head"][val] = 0
-#
-# water_table_bottom = [d_frac_bottom[pp.STATE][node_var][0] - pressure_threshold]
-# water_table_top = [d_frac_top[pp.STATE][node_var][0] - pressure_threshold]
-# water_vol_bottom = [vol(d_frac_bottom[pp.STATE][node_var])[0]]
-# water_vol_top = [vol(d_frac_top[pp.STATE][node_var])[0]]
-#exporter_ghost = pp.Exporter(ghost_gb, "morse_code", "out")
-#exporter_ghost.write_vtu([node_var], time_step=0)
+d_bulk = gb.node_props(bulk_list[0])
+d_bulk_ghost = ghost_gb.node_props(ghost_bulk_list[0])
+z_bulk = bulk_list[0].cell_centers[1]
+
+d_top = gb.node_props(frac_list[0])
+d_top_ghost = ghost_gb.node_props(ghost_frac_list[0])
+z_top = frac_list[0].cell_centers[1]
+z_top_ghost = ghost_frac_list[0].cell_centers[1]
+
+d_left = gb.node_props(frac_list[1])
+d_left_ghost = ghost_gb.node_props(ghost_frac_list[1])
+z_left = frac_list[1].cell_centers[1]
+z_left_ghost = ghost_frac_list[1].cell_centers[1]
+
+d_right = gb.node_props(frac_list[2])
+d_right_ghost = ghost_gb.node_props(ghost_frac_list[2])
+z_right = frac_list[2].cell_centers[1]
+z_right_ghost = ghost_frac_list[2].cell_centers[1]
+
+d_point = gb.node_props(lfn_list[-1])
+d_point_ghost = ghost_gb.node_props(ghost_lfn_list[-1])
+
+# # Set state in bulk ghost grid
+pp.set_state(
+    data=d_bulk_ghost,
+    state={
+        node_var: d_bulk[pp.STATE][node_var],
+        "pressure_head": (
+                d_bulk[pp.STATE][node_var] -
+                d_bulk[pp.PARAMETERS][param_key]["elevation"]
+        )
+    },
+)
+
+# Set state in fracture ghost grids
+pp.set_state(
+    data=d_top_ghost,
+    state={
+        node_var: d_top[pp.PARAMETERS][param_key]["datum"]
+        * np.ones(ghost_frac_list[0].num_cells),
+        "pressure_head": d_top[pp.PARAMETERS][param_key]["datum"]
+        * np.ones(ghost_frac_list[0].num_cells) - z_top_ghost
+    },
+)
+
+pp.set_state(
+    data=d_left_ghost,
+    state={
+        node_var: d_left[pp.PARAMETERS][param_key]["datum"]
+        * np.ones(ghost_frac_list[1].num_cells),
+        "pressure_head": d_left[pp.PARAMETERS][param_key]["datum"]
+        * np.ones(ghost_frac_list[1].num_cells) - z_left_ghost
+    },
+)
+
+pp.set_state(
+    data=d_right_ghost,
+    state={
+        node_var: d_right[pp.PARAMETERS][param_key]["datum"]
+        * np.ones(ghost_frac_list[2].num_cells),
+        "pressure_head": d_left[pp.PARAMETERS][param_key]["datum"]
+        * np.ones(ghost_frac_list[2].num_cells) - z_right_ghost
+    },
+)
+
+pp.set_state(
+    data=d_point_ghost,
+    state={
+        node_var: 0,
+        "pressure_head": 0
+    }
+
+)
+
+exporter_ghost = pp.Exporter(ghost_gb, "junction", "out")
+exporter_ghost.write_vtu([node_var, "pressure_head"], time_step=0)
 
 # %% Time loop
 total_iteration_counter = 0
 iters = []
-ABS_TOL = 1E-3
+ABS_TOL = 1E-6
 is_mortar_conductive = np.zeros(gb.num_mortar_cells(), dtype=np.int8)
 control_faces = is_mortar_conductive
 
@@ -500,7 +512,6 @@ while tsc.time < tsc.time_final:
 
     # Solver loop
     while itr <= tsc.iter_max and not res_norm < ABS_TOL:
-
         # Solve system of equations and distribute variables to pp.ITERATE
         A, b = equation_manager.assemble()
         solution = spla.spsolve(A, b)
@@ -513,7 +524,8 @@ while tsc.time < tsc.time_final:
         else:
             inti_res_norm = max(res_norm, init_res_norm)
         rel_res = res_norm / init_res_norm
-        print("t", tsc.time, "itr", itr, "res", res_norm, "rel_res", rel_res, "dt", tsc.dt)
+        # Uncomment to print solver info
+        # print("t", tsc.time, "itr", itr, "res", res_norm, "rel_res", rel_res, "dt", tsc.dt)
 
         # Prepare next iteration
         itr += 1
@@ -543,10 +555,11 @@ while tsc.time < tsc.time_final:
     )
     if control_faces.sum() == 0 and is_mortar_conductive.sum() > 0:
         param_update.update_mortar_conductivity_state(is_mortar_conductive, edge_list)
-        print(
-            f"The faces {np.where(is_mortar_conductive)[0]} are saturated. "
-            f"Solution will be recomputed."
-        )
+        # print(
+        #     f"The faces {np.where(is_mortar_conductive)[0]} are saturated. "
+        #     f"Solution will be recomputed."
+        # )
+        print("Encountered saturated mortar cells. Solution will be updated.")
         control_faces = is_mortar_conductive
         set_iterate_as_state(gb, node_var, edge_var)
         tsc.time -= tsc.dt  # correct time since we are going to recompute the solution
@@ -559,6 +572,37 @@ while tsc.time < tsc.time_final:
         control_faces = is_mortar_conductive
     # end of checking
 
+    # Enforce hydrostatic equilibration
+    vol_t = vol(h_lfn.evaluate(dof_manager).val)[0]
+    vol_l = vol(h_lfn.evaluate(dof_manager).val)[1]
+    vol_r = vol(h_lfn.evaluate(dof_manager).val)[2]
+    vol_tmax = 40 * 0.1
+    vol_lmax = 42.42640687 * 0.1
+    vol_rmax = 31.6227766 * 0.1
+    sin_t = 1
+    sin_l = 0.7071067811865475
+    sin_r = 0.9486832980505138
+    # Left and right fractures can receive water
+    if (vol_lmax - vol_l) > vol_t/2 and (vol_rmax - vol_r) > vol_t/2:
+        vol_l = vol_l + vol_t/2
+        vol_r = vol_r + vol_t/2
+        vol_t = 0
+        # Correct values of hydraulic head after redistribution
+        d_top[pp.STATE][pp.ITERATE][node_var] = (vol_t / 0.1) * sin_t + 50
+        d_left[pp.STATE][pp.ITERATE][node_var] = (vol_l / 0.1) * sin_l + 20
+        d_right[pp.STATE][pp.ITERATE][node_var] = (vol_r / 0.1) * sin_r + 20
+    # Left and right cannot longer receive water
+    elif np.abs(vol_lmax - vol_l) <= 1e-5 and np.abs(vol_rmax - vol_r) <= 1e-5:
+        vol_top = vol_t
+        vol_left = vol_lmax
+        vol_right = vol_rmax
+        # Correct values of hydraulic head after redistribution
+        d_top[pp.STATE][pp.ITERATE][node_var] = (vol_t / 0.1) * sin_t + 50
+        d_left[pp.STATE][pp.ITERATE][node_var] = (vol_l / 0.1) * sin_l + 20
+        d_right[pp.STATE][pp.ITERATE][node_var] = (vol_r / 0.1) * sin_r + 20
+    else:
+        pass
+
     # Save number of iterations and time step
     iters.append(itr - 1)
     times.append(tsc.time)
@@ -569,45 +613,43 @@ while tsc.time < tsc.time_final:
     param_update.update_time_step(tsc.dt)
     set_state_as_iterate(gb, node_var, edge_var)
     print("Hydraulic heads:", h_lfn.evaluate(dof_manager).val)
-    print("Volumes:", vol(h_lfn.evaluate(dof_manager).val))
+    # print("Volumes:", vol(h_lfn.evaluate(dof_manager).val))
     print()
 
     # # Export to ParaView
-    # pp.set_state(
-    #     data=d_bulk_ghost,
-    #     state={node_var: d_bulk[pp.STATE][node_var]},
-    #)
-    # pp.set_state(
-    #     data=d_frac_ghost,
-    #     state={
-    #         node_var: get_ghost_hydraulic_head(ghost_frac_list[0], d_frac[pp.STATE][node_var]),
-    #         "pressure_head": get_ghost_hydraulic_head(
-    #             ghost_frac_list[0], d_frac[pp.STATE][node_var]) - z_frac_ghost,
-    #     },
-    # )
-    # pp.set_state(
-    #     data=d_edge_ghost,
-    #     state={
-    #         edge_var: d_edge[pp.STATE][edge_var]
-    #     }
-    # )
-    # # Correct values of pressure head in the fracture if negative
-    # for val in d_frac_ghost[pp.STATE]["pressure_head"] <= 0:
-    #     d_frac_ghost[pp.STATE]["pressure_head"][val] = 0
-    # if tsc.time in tsc.schedule:
-    #     export_counter += 1
-    #     exporter_ghost.write_vtu([node_var], time_step=export_counter)
+    pp.set_state(
+        data=d_bulk_ghost,
+        state={
+            node_var: d_bulk[pp.STATE][node_var],
+            "pressure_head":  d_bulk[pp.STATE][node_var] - d_bulk[pp.PARAMETERS][param_key][
+                "elevation"]
+        },
+    )
+    pp.set_state(
+        data=d_top_ghost,
+        state={
+            node_var: get_ghost_hydraulic_head(ghost_frac_list[0],
+                                               d_top[pp.STATE][node_var]),
+            "pressure_head": d_top_ghost[pp.STATE][node_var] - z_top_ghost
+        },
+    )
+    pp.set_state(
+        data=d_left_ghost,
+        state={
+            node_var: get_ghost_hydraulic_head(ghost_frac_list[1],
+                                               d_left[pp.STATE][node_var]),
+            "pressure_head": d_left_ghost[pp.STATE][node_var] - z_left_ghost
+        },
+    )
+    pp.set_state(
+        data=d_right_ghost,
+        state={
+            node_var: get_ghost_hydraulic_head(ghost_frac_list[2],
+                                               d_right[pp.STATE][node_var]),
+            "pressure_head": d_right_ghost[pp.STATE][node_var] - z_right_ghost
+        },
+    )
 
-#%% Export results
-# iters.insert(0, 0)  # insert 0 at the beginning of the list
-# d = dict()
-# d["time"] = np.array(times) / 3600  # time in [hours]
-# d["water_volume"] = np.array(water_vol)  # water volume in [cm^3]
-# d["water_table"] = np.array(water_table)  # fracture water table in [cm]
-# d["time_step"] = np.array(dts)  # time steps in [s]
-# d["iterations"] = np.array(iters)  # iterations
-#
-# file_name = "out.plk"
-# open_file = open(file_name, "wb")
-# pickle.dump(d, open_file)
-# open_file.close()
+    if tsc.time in tsc.schedule:
+        export_counter += 1
+        exporter_ghost.write_vtu([node_var, "pressure_head"], time_step=export_counter)

@@ -58,10 +58,10 @@ def get_conductive_mortars(
     # check if the pressure trace is greater (or equal) than the pressure threshold,
     # if that is the case also promote that cell to conductive.
     for mortar_cell in range(0, tr_hb.val.size):
-        if hf.val[mortar_cell] > (gb.pressure_threshold + zeta[mortar_cell]):
+        if hf.val[mortar_cell] - zeta[mortar_cell] > 0:
             is_conductive[mortar_cell] = 1
         else:
-            if tr_hb.val[mortar_cell] >= (gb.pressure_threshold + zeta[mortar_cell]):
+            if tr_hb.val[mortar_cell] - zeta[mortar_cell] > 0:
                 is_conductive[mortar_cell] = 1
 
     return is_conductive
@@ -208,14 +208,14 @@ class ParameterUpdate:
 #         self._edgelist: List[Edge] = [e for e, _ in self._gb.edges()]
 #         self._gfrac = g_fracture
 #
-#         # Get hold of ghost mortar projections
+#         # Get hold of ghost mortar proj
 #         proj = pp.ad.MortarProjections(
 #             gb=self._gb, grids=self._gridlist, edges=self._edgelist
 #         )
 #         # We only need secondary -> mortar (average)
 #         self._secondary_to_mortar_avg = proj.secondary_to_mortar_avg.parse(gb=self._gb)
 #
-#         # Get hold of ghost subdomain projections
+#         # Get hold of ghost subdomain proj
 #         subdomain_projection = pp.ad.SubdomainProjections(grids=self._gridlist)
 #         # We need the prolongation from the fracture to the global number of cells
 #         self._cell_prolongation = subdomain_projection.cell_prolongation(

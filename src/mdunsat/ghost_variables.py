@@ -77,12 +77,12 @@ class GhostHydraulicHead:
         #         ghost_edges.append(e)
         # self._ghost_edges = ghost_edges
 
-        # Ghost mortar projections
+        # Ghost mortar proj
         self._ghost_mortar_proj: pp.ad.MortarProjections = pp.ad.MortarProjections(
             gb=self._ghost_gb, grids=self._ghost_grid, edges=self._ghost_edges
         )
 
-        # Ghost subdomain projections
+        # Ghost subdomain proj
         self._ghost_subdomain_proj: pp.ad.SubdomainProjections = pp.ad.SubdomainProjections(
             grids=self._ghost_grid
         )
@@ -141,13 +141,11 @@ class GhostHydraulicHead:
             # ad_Array, but its Jacobian remains unchanged. Not sure about the repercusion
             # that this might have. But if we need to do things correctly, we should apply
             # something on the lines of the chunk from above :)
-            dry_cells: np.ndarray[bool] = hfrac_broad.val <= (
-                    self._cc + self._gb.pressure_threshold
-            )
-            hfrac_broad.val[dry_cells] = self._cc[dry_cells] + self._gb.pressure_threshold
+            dry_cells: np.ndarray[bool] = (hfrac_broad.val - self._cc) <= 0
+            hfrac_broad.val[dry_cells] = self._cc[dry_cells]
 
             # Now we are ready to project the hydraulic head onto the mortar grids. To this
-            # aim, we first need the relevant subdomain projections and mortar projections.
+            # aim, we first need the relevant subdomain proj and mortar proj.
             cell_prolongation = self._ghost_subdomain_proj.cell_prolongation(
                 grids=self._ghost_low_dim_grids
             ).parse(gb=self._ghost_gb)
@@ -164,8 +162,8 @@ class GhostHydraulicHead:
             # Check proper doc above
             broad_matrix: sps.lil_matrix = self._get_broadcasting_matrix()
             hfrac_broad: np.ndarray = broad_matrix * h_frac
-            dry_cells = hfrac_broad < (self._cc + self._gb.pressure_threshold)
-            hfrac_broad[dry_cells] = self._cc[dry_cells] + self._gb.pressure_threshold
+            dry_cells = (hfrac_broad - self._cc) <= 0
+            hfrac_broad[dry_cells] = self._cc[dry_cells]
             cell_prolongation = self._ghost_subdomain_proj.cell_prolongation(
                 grids=self._ghost_low_dim_grids
             ).parse(gb=self._ghost_gb)
