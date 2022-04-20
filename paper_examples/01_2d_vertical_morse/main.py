@@ -41,12 +41,12 @@ ghost_frac_edge_list = gfo.fracture_edge_list(ghost_gb)
 # export_mesh.write_vtu(ghost_gb)
 
 # %% Time parameters
-schedule = list(np.linspace(0, 300, 5, dtype=np.int32))
+schedule = list(np.linspace(0, 20, 2, dtype=np.int32))
 tsc = pp.TimeSteppingControl(
     schedule=schedule,
-    dt_init=1.0,
+    dt_init=0.01,
     dt_min_max=(0.01, 0.25 * pp.HOUR),
-    iter_max=100,
+    iter_max=20,
     iter_optimal_range=(4, 7),
     iter_lowupp_factor=(1.3, 0.7),
     recomp_factor=0.5,
@@ -73,8 +73,6 @@ for _, d in gb.edges():
 param_update = mdu.ParameterUpdate(gb, param_key)  # object to update parameters
 
 for g, d in gb:
-
-    # Set parameters for the bulk
     if g.dim == gb.dim_max():
         # For convinience, store values of bounding box
         x_min: float = gb.bounding_box()[0][0]
@@ -120,7 +118,7 @@ for g, d in gb:
         K_SAT[mult_cond] = 5.55E-6  # hydraulic conductivity of blocking cells
 
         # Initialize bulk data
-        specified_parameters: dict = {
+        param: dict = {
             "second_order_tensor": pp.SecondOrderTensor(K_SAT),  # [cm/s]
             "bc": bc,
             "bc_values": bc_values,
@@ -170,23 +168,22 @@ for e, d in gb.edges():
     zeros = np.zeros(mg.num_cells)
     g_sec, _ = gb.nodes_of_edge(e)
     d_sec = gb.node_props(g_sec)
-    time_scale_factor = 1E10
-    aperture = d_sec[pp.PARAMETERS][param_key]["aperture"]
+    time_scale_factor = 2
+    aperture = d_sec[pp.PARAMETERS][param_key]["aperture"]  # [cm]
     sat_conductivity = 0.00922  # [cm/s]
     sat_normal_diffusivity = (sat_conductivity / (2 * aperture)) * ones  # [1/s]
-    is_conductive = zeros
     if mg.dim == gb.dim_max() - 1:
         data = {
             "sat_normal_diffusivity": sat_normal_diffusivity,
             "normal_diffusivity": sat_normal_diffusivity,
-            "is_conductive": is_conductive,
+            "is_conductive": zeros,
             "elevation": mg.cell_centers[gb.dim_max() - 1],
         }
     else:
         data = {
             "sat_normal_diffusivity": sat_normal_diffusivity * time_scale_factor,
             "normal_diffusivity": sat_normal_diffusivity * time_scale_factor,
-            "is_conductive": is_conductive,
+            "is_conductive": ones,
             "elevation": mg.cell_centers[gb.dim_max() - 1],
         }
     pp.initialize_data(mg, d, param_key, data)
