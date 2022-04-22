@@ -509,6 +509,7 @@ while tsc.time < tsc.time_final:
     itr: int = 0
     res_norm: float = 1E8
     rel_res: float = 1E8
+    print(f"Time: {tsc.time}")
 
     # Solver loop
     while itr <= tsc.iter_max and not res_norm < ABS_TOL:
