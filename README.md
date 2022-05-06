@@ -1,4 +1,4 @@
-# unsat-frac: A PorePy extension package for simulating the unsatured flow in fractured porous media
+# unsat-frac: A PorePy extension package for simulating the unsaturated flow in fractured porous media
 <img src="show.gif" width="700">
 
 **Animation:** Fast flow of water through the fracture.
