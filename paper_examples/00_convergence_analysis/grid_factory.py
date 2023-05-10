@@ -41,10 +41,10 @@ class GridGenerator:
         self.dim = 2
 
     def __repr__(self) -> str:
-        return "Grid factory object corresponding to the first example."
+        return "Grid factory object corresponding to the convergence analysis."
 
     def get_grid_buckets(self) -> Tuple[pp.GridBucket, pp.GridBucket]:
-        """ Construct physical and ghost grid buckets """
+        """Construct physical and ghost grid buckets"""
 
         # First, create the ghost grid bucket
         network = pp.fracture_importer.network_2d_from_csv(
@@ -54,10 +54,6 @@ class GridGenerator:
             gb_ghost = network.mesh(self.mesh_args)
         else:
             gb_ghost = network.mesh(self.mesh_args, constraints=self.constraints)
-
-        # Purge unwanted zero-dimensional subdomains
-        gb_ghost.eliminate_node(gb_ghost.grids_of_dimension(0)[0])
-        gb_ghost.eliminate_node(gb_ghost.grids_of_dimension(0)[0])
 
         # Retrieve the 1D fractures
 
@@ -84,7 +80,9 @@ class GridGenerator:
         frac_length = [g.cell_volumes.sum() for g in ghost_frac_list]
 
         # Create the physical fractures as 1D grids with only one cell and their length
-        mono_fracs = [pp.CartGrid(np.array([1]), physdims=length) for length in frac_length]
+        mono_fracs = [
+            pp.CartGrid(np.array([1]), physdims=length) for length in frac_length
+        ]
 
         # Perturb the nodes of the created fracture grids. The perturbation
         # will be perform such that their nodes match with the physical nodes
@@ -102,11 +100,7 @@ class GridGenerator:
         else:
             gb = network.mesh(self.mesh_args, constraints=self.constraints)
 
-        # Purge unwanted zero-dimensional subdomains
-        gb.eliminate_node(gb.grids_of_dimension(0)[0])
-        gb.eliminate_node(gb.grids_of_dimension(0)[0])
-
-        # Retrive the list of fracture grids
+        # Retrieve the list of fracture grids
         frac_list = [g for g, _ in gb if g.dim == 1]
 
         # Now, we have to create a dictionary that keeps track of the mapping between the

@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-from typing import Callable
-
 import matplotlib.pyplot as plt
 import numpy as np
 import sympy as sym
 
 import porepy as pp
-from porepy.models.verification_setups.verifications_utils import VerificationUtils
-from porepy.models.verification_setups.manu_flow_incomp_frac import ManufacturedFlow2d
 
 
 class ExactSolution:
@@ -20,15 +16,9 @@ class ExactSolution:
         # Symbolic variables
         x, y, t = sym.symbols("x y t")
 
-        # Smoothness exponent
-        n = 1.5
-
-        # Constant that ensures unsaturated conditions in the matrix
-        c0 = 1
-        c1 = -1
-
         # Fracture's aperture
         a_f = 0.1
+        c_unsat = -1
 
         # Distance and bubble functions
         distance_fun = [
@@ -40,9 +30,9 @@ class ExactSolution:
 
         # Exact hydraulic head in the rock
         psi_rock = [
-            c0 * t * (distance_fun[0] ** (1 + n)) + c1,
-            c0 * t * (distance_fun[1] ** (1 + n) + bubble_fun * distance_fun[1]) + c1,
-            c0 * t * (distance_fun[2] ** (1 + n)) + c1,
+            t * (distance_fun[0] ** 2.5) + c_unsat,
+            t * (distance_fun[1] ** 2.5 + bubble_fun * distance_fun[1]) + c_unsat,
+            t * (distance_fun[2] ** 2.5) + c_unsat,
         ]
 
         # Exact pressure head in the rock
@@ -56,7 +46,7 @@ class ExactSolution:
 
         # Exact Darcy flux in the rock
         q_rock = [
-            [- krw * sym.diff(h, x), - krw * sym.diff(h, y)]
+            [-krw * sym.diff(h, x), -krw * sym.diff(h, y)]
             for (krw, h) in zip(krw_rock, h_rock)
         ]
 
@@ -70,14 +60,18 @@ class ExactSolution:
         f_rock = [accum + div_q for (accum, div_q) in zip(accum_rock, div_q_rock)]
 
         # Exact flux on the interface (mortar fluxes)
-        q_intf = t * bubble_fun * sym.exp(c1)
+        q_intf = t * bubble_fun * sym.exp(c_unsat)
 
         # Exact accumulation in the fracture
         accum_frac = sym.integrate(2 * q_intf, (y, 0.25, 0.75))
 
         # Exact water volume in the fracture (here we solve the ODE exactly)
-        jump_coeff = accum_frac.subs({"t": 1})  # dirty trick to retrieve coefficient
-        vol_frac = (jump_coeff * t ** 2) / 2
+        """Note that accum_frac has the form c t, where c is a constant. To retrieve 
+        such constant, we use a dirty trick which consists in evaluating the 
+        expression with t = 1. Note that this does NOT imply that the time is 1, 
+        but simply that we don't want to modify the constant c."""
+        jump_coeff = accum_frac.subs({"t": 1})
+        vol_frac = (jump_coeff * t**2) / 2
 
         # Exact hydraulic head in the fracture
         h_frac = vol_frac * a_f
@@ -85,9 +79,14 @@ class ExactSolution:
         # Public attributes
         self.h_rock = h_rock
         self.psi_rock = psi_rock
+        self.theta_rock = theta_rock
+        self.krw_rock = krw_rock
         self.q_rock = q_rock
         self.f_rock = f_rock
+
         self.q_intf = q_intf
+
+        self.accum_frac = accum_frac
         self.vol_frac = vol_frac
         self.h_frac = h_frac
 
@@ -301,8 +300,8 @@ class ExactSolution:
         return float(h_fun(time))
 
     # -----> Others
-    def rock_boundary_pressure(self, sd_rock: pp.Grid, time: float) -> np.ndarray:
-        """Exact pressure at the boundary faces.
+    def rock_boundary_hydraulic_head(self, sd_rock: pp.Grid, time: float) -> np.ndarray:
+        """Exact hydraulic head at the boundary faces.
 
         Parameters:
             sd_rock: Rock grid.
@@ -327,71 +326,15 @@ class ExactSolution:
         bc_faces = sd_rock.get_boundary_faces()
 
         # Lambdify expression
-        p_fun = [sym.lambdify((x, y, t), p, "numpy") for p in self.p_rock]
+        h_fun = [sym.lambdify((x, y, t), h, "numpy") for h in self.h_rock]
 
         # Boundary pressures
-        p_bf = np.zeros(sd_rock.num_faces)
-        for (p, idx) in zip(p_fun, face_idx):
-            p_bf[bc_faces] += p(fc[0], fc[1], time)[bc_faces] * idx[bc_faces]
+        h_bf = np.zeros(sd_rock.num_faces)
+        for (h, idx) in zip(h_fun, face_idx):
+            h_bf[bc_faces] += h(fc[0], fc[1], time)[bc_faces] * idx[bc_faces]
 
-        return p_bf
+        return h_bf
 
-    def rock_boundary_density(self, sd_rock: pp.Grid, time: float) -> np.ndarray:
-        """Exact density at the boundary faces.
-
-        Parameters:
-            sd_rock: Rock grid.
-            time: time in seconds.
-
-        Returns:
-            Array of ``shape=(sd_rock.num_faces, )`` with the exact density values
-            on the exterior boundary faces for the given ``time``.
-
-        """
-        # Symbolic variables
-        x, y, t = sym.symbols("x y t")
-
-        # Get list of face indices
-        fc = sd_rock.face_centers
-        bot = fc[1] < 0.25
-        mid = (fc[1] >= 0.25) & (fc[1] <= 0.75)
-        top = fc[1] > 0.75
-        face_idx = [bot, mid, top]
-
-        # Boundary faces
-        bc_faces = sd_rock.get_boundary_faces()
-
-        # Lambdify expression
-        rho_fun = [sym.lambdify((x, y, t), rho, "numpy") for rho in self.rho_rock]
-
-        # Boundary pressures
-        rho_bf = np.zeros(sd_rock.num_faces)
-        for (rho, idx) in zip(rho_fun, face_idx):
-            rho_bf[bc_faces] += rho(fc[0], fc[1], time)[bc_faces] * idx[bc_faces]
-
-        return rho_bf
 
 #%% Runner
 ex = ExactSolution()
-
-params = {
-    "mesh_arguments": {"mesh_size_frac": 0.05, "mesh_size_bound": 0.05}
-}
-setup = ManufacturedFlow2d(params)
-setup.prepare_simulation()
-
-#%% Plotting exact solutions
-sd = setup.mdg.subdomains()[0]
-intf = setup.mdg.interfaces()[0]
-
-pp.plot_grid(sd, ex.rock_hydraulic_head(sd, 1), plot_2d=True, title="Hydraulic Head")
-pp.plot_grid(sd, ex.rock_pressure_head(sd, 1), plot_2d=True, title="Pressure Head")
-pp.plot_grid(sd, ex.rock_source(sd, 1), plot_2d=True, title="Source")
-plt.plot(
-    ex.interface_darcy_flux(intf, 1),
-    intf.cell_centers[1],
-)
-plt.show()
-print(f"Fracture water volume: {ex.fracture_volume(1)}")
-print(f"Fracture hydraulic head: {ex.fracture_hydraulic_head(1)}")
-
