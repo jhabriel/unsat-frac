@@ -70,7 +70,7 @@ ex = ExactSolution()
 
 # %% Retrieve grid buckets
 gfo = GridGenerator(
-    mesh_args={"mesh_size_frac": 0.05, "mesh_size_bound": 0.05},
+    mesh_args={"mesh_size_frac": 0.1, "mesh_size_bound": 0.1},
     csv_file="network.csv",
     domain={"xmin": 0, "ymin": 0, "xmax": 1, "ymax": 1},
     constraints=[1, 2],
@@ -139,14 +139,14 @@ for g, d in gb:
         bc_faces = g.get_boundary_faces()
         bc_type = np.array(bc_faces.size * ["dir"])
         bc = pp.BoundaryCondition(g, faces=bc_faces, cond=list(bc_type))
-        bc_values = ex.rock_boundary_hydraulic_head(g, time=0.5)
+        bc_values = ex.rock_boundary_hydraulic_head(g, time=tsc.time_final)
 
         # Initialize bulk data
         specified_parameters: dict = {
             "second_order_tensor": pp.SecondOrderTensor(np.ones(g.num_cells)),
             "bc": bc,
             "bc_values": bc_values,
-            "source": ex.rock_source(g, time=0.5),
+            "source": ex.rock_source(g, time=tsc.time_final),
             "elevation": g.cell_centers[gb.dim_max() - 1],
             "mass_weight": np.ones(g.num_cells),
             "time_step": tsc.dt,  # [s]
@@ -172,13 +172,13 @@ for e, d in gb.edges():
     g_sec, _ = gb.nodes_of_edge(e)
     d_sec = gb.node_props(g_sec)
     aperture = d_sec[pp.PARAMETERS][param_key]["aperture"]
-    sat_conductivity = 1e-2  # [cm/s]
-    ex_lmbda = ex.interface_darcy_flux(mg, 0.5) / mg.cell_volumes
-    kappa = ex_lmbda / (4 * np.exp(-1))
+    exact_normal_flux = ex.interface_darcy_flux(mg, tsc.time_final) / mg.cell_volumes
+    exact_hyd_head_jump = ex.c_unsat - pressure_threshold  # 4
+    exact_k_rel = np.exp(ex.c_unsat)
+    normal_diffusivity = exact_normal_flux / (exact_hyd_head_jump * exact_k_rel)
     is_conductive = zeros
     data = {
-        "sat_normal_diffusivity": kappa,
-        "normal_diffusivity": kappa,
+        "normal_diffusivity": normal_diffusivity,
         "is_conductive": is_conductive,
         "elevation": mg.cell_centers[gb.dim_max() - 1],
     }
@@ -246,13 +246,6 @@ frac_cell_rest: pp.ad.Matrix = subdomain_proj_scalar.cell_restriction(frac_list)
 frac_cell_prol: pp.ad.Matrix = subdomain_proj_scalar.cell_prolongation(frac_list)
 
 # %% Governing equations in the bulk
-
-# # Soil water retention curves
-# vgm = mdu.VanGenuchtenMualem(gb=gb, param_key=param_key)
-# theta_ad: pp.ad.Function = vgm.water_content(as_ad=True)
-# krw_ad: pp.ad.Function = vgm.relative_permeability(as_ad=True)
-# smc_ad: pp.ad.Function = vgm.moisture_capacity(as_ad=True)
-
 
 # Soil water retention curves
 def theta(pressure_head):
@@ -344,7 +337,7 @@ vol_ad: pp.ad.Function = fv.fracture_volume(as_ad=True)
 vol_cap_ad: pp.ad.Function = fv.volume_capacity(as_ad=True)
 vol = fv.fracture_volume(as_ad=False)
 
-linearization = "modified_picard"  # linearization of the bulk equations
+linearization = "newton"  # linearization of the bulk equations
 if linearization == "newton":
     accum_frac_active = vol_ad(h_frac)
     accum_frac_inactive = vol_ad(h_frac_n) * (-1)
@@ -376,7 +369,8 @@ accum_frac = accum_frac_active + accum_frac_inactive
 # Declare conservation equation
 # TODO: sources_from_mortar are the integrated mortar fluxes. Check if we need to scale
 #  this by some factor, before multiplying by the aperture.
-conserv_frac_eq = accum_frac - 0.5 * dt_ad * aperture_ad * sources_from_mortar
+# We need to divide the sources_from_mortar by 2 to get the correct result
+conserv_frac_eq = accum_frac - 0.5 * tsc.dt * aperture_ad * sources_from_mortar
 
 # Evaluate and discretize
 conserv_frac_eq.discretize(gb=gb)
@@ -634,22 +628,22 @@ while tsc.time < tsc.time_final:
 
 #%% Plotting
 h_bulk_mpfa = d_bulk[pp.STATE][pp.ITERATE]["hydraulic_head"]
-h_bulk_exact = ex.rock_hydraulic_head(g_bulk, 0.5)
+h_bulk_exact = ex.rock_hydraulic_head(g_bulk, tsc.time_final)
 
 q_bulk_mpfa = flux_bulk.evaluate(dof_manager).val
-q_bulk_exact = ex.rock_darcy_flux(g_bulk, 0.5)
+q_bulk_exact = ex.rock_darcy_flux(g_bulk, tsc.time_final)
 
 q_intf_mpfa = d_edge[pp.STATE][pp.ITERATE]["mortar_flux"]
-q_intf_exact = ex.interface_darcy_flux(g_intf, 0.5)
+q_intf_exact = ex.interface_darcy_flux(g_intf, tsc.time_final)
 
 accum_frac_be = sources_from_mortar.evaluate(dof_manager).val[0]
-accum_frac_exact = ex.frac_accumulation(0.5)
+accum_frac_exact = ex.frac_accumulation(tsc.time_final)
 
 h_frac_mpfa = h_frac.evaluate(dof_manager).val - (pressure_threshold + 0.25)
-h_frac_exact = ex.fracture_hydraulic_head(0.5)
+h_frac_exact = ex.fracture_hydraulic_head(tsc.time_final)
 
 vol_frac_mpfa = vol(h_frac_mpfa + (pressure_threshold + 0.25))
-vol_frac_exact = ex.fracture_volume(0.5)
+vol_frac_exact = ex.fracture_volume(tsc.time_final)
 
 # pp.plot_grid(
 #     grid_list[0], h_bulk_mpfa, linewidth=0, plot_2d=True, title="h_bulk (MPFA)"
@@ -662,8 +656,8 @@ vol_frac_exact = ex.fracture_volume(0.5)
 error_h_bulk = relative_l2_error(g_bulk, h_bulk_exact, h_bulk_mpfa, True, True)
 error_q_bulk = relative_l2_error(g_bulk, q_bulk_exact, q_bulk_mpfa, True, False)
 error_q_intf = relative_l2_error(mg, q_intf_exact, q_intf_mpfa, True, True)
-error_h_frac = np.abs((h_frac_mpfa - h_frac_exact) / h_frac_exact)
-error_vol_frac = np.abs((vol_frac_mpfa - vol_frac_exact) / vol_frac_exact)
+error_h_frac = np.abs((h_frac_mpfa - h_frac_exact) / h_frac_exact)[0]
+error_vol_frac = np.abs((vol_frac_mpfa - vol_frac_exact) / vol_frac_exact)[0]
 
 
 print(
@@ -673,6 +667,5 @@ print(
     f"Error q_intf: {error_q_intf} \n"
     f"Error h_frac: {error_h_frac} \n"
     f"Error vol_frac: {error_vol_frac} \n"
-    # f"Error dV_dt:
-    # {np.abs((accum_frac_be - accum_frac_exact) /accum_frac_exact) * 100}"
+
 )

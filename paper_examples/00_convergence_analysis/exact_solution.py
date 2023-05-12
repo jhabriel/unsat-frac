@@ -19,6 +19,7 @@ class ExactSolution:
         # Fracture's aperture
         a_f = 1
         c_unsat = -1
+        self.c_unsat = c_unsat
 
         # Distance and bubble functions
         distance_fun = [
