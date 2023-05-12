@@ -17,7 +17,7 @@ class ExactSolution:
         x, y, t = sym.symbols("x y t")
 
         # Fracture's aperture
-        a_f = 0.1
+        a_f = 1
         c_unsat = -1
 
         # Distance and bubble functions
@@ -70,11 +70,11 @@ class ExactSolution:
         such constant, we use a dirty trick which consists in evaluating the 
         expression with t = 1. Note that this does NOT imply that the time is 1, 
         but simply that we don't want to modify the constant c."""
-        jump_coeff = accum_frac.subs({"t": 1})
+        jump_coeff = accum_frac.subs({"t": 1})  # 0.0007664155024405221
         vol_frac = (jump_coeff * t**2) / 2
 
         # Exact hydraulic head in the fracture
-        h_frac = vol_frac * a_f
+        h_frac = vol_frac / a_f
 
         # Public attributes
         self.h_rock = h_rock
@@ -86,6 +86,7 @@ class ExactSolution:
 
         self.q_intf = q_intf
 
+        self.jump_coeff = jump_coeff
         self.accum_frac = accum_frac
         self.vol_frac = vol_frac
         self.h_frac = h_frac
@@ -286,6 +287,12 @@ class ExactSolution:
         lmbda_cc = lmbda_fun(cc[1], time) * vol
 
         return lmbda_cc
+
+    def frac_accumulation(self, time: float):
+        """"Evaluates exact accumulation term in the fracture"""
+        t = sym.symbols("t")
+        accum_fun = sym.lambdify(t, self.accum_frac, "numpy")
+        return float(accum_fun(time))
 
     def fracture_volume(self, time: float) -> float:
         """Evaluates exact fracture volume at a given time"""
