@@ -13,6 +13,8 @@ from mdunsat.ad_utils import (
     set_state_as_iterate,
     set_iterate_as_state,
 )
+from fracture_volume import FractureVolume
+from ghost_variables import GhostHydraulicHead
 from exact_solution import ExactSolution
 from typing import Union
 
@@ -68,7 +70,7 @@ ex = ExactSolution()
 
 # %% Retrieve grid buckets
 gfo = GridGenerator(
-    mesh_args={"mesh_size_frac": 0.0125, "mesh_size_bound": 0.0125},
+    mesh_args={"mesh_size_frac": 0.05, "mesh_size_bound": 0.05},
     csv_file="network.csv",
     domain={"xmin": 0, "ymin": 0, "xmax": 1, "ymax": 1},
     constraints=[1, 2],
@@ -154,7 +156,7 @@ for g, d in gb:
     else:
         # Parameters for the fracture grids
         specified_parameters = {
-            "aperture": 0.1,
+            "aperture": 1.0,
             "datum": np.min(g.face_centers[gb.dim_max() - 1]),
             "elevation": g.cell_centers[gb.dim_max() - 1],
             "sin_alpha": 1.0,
@@ -309,7 +311,7 @@ dt_ad = mdu.ParameterScalar(param_key, "time_step", grids=bulk_list)
 source_bulk = pp.ad.ParameterArray(param_key, "source", grids=bulk_list)
 mass_bulk = pp.ad.MassMatrixAd(param_key, grids=bulk_list)
 
-linearization = "newton"  # linearization of the bulk equations
+linearization = "modified_picard"  # linearization of the bulk equations
 if linearization == "newton":
     accum_bulk_active = mass_bulk.mass * theta_ad(psib)
     accum_bulk_inactive = mass_bulk.mass * theta_ad(psib_n) * (-1)
@@ -337,12 +339,12 @@ conserv_bulk_num = conserv_bulk_eq.evaluate(dof_manager=dof_manager)
 # %% Governing equations in the fracture
 
 # Get water volume as a function of the hydraulic head, and its first derivative
-fv = mdu.FractureVolume(gb=gb, fracture_grids=frac_list, param_key=param_key)
+fv = FractureVolume(gb=gb, fracture_grids=frac_list, param_key=param_key)
 vol_ad: pp.ad.Function = fv.fracture_volume(as_ad=True)
 vol_cap_ad: pp.ad.Function = fv.volume_capacity(as_ad=True)
 vol = fv.fracture_volume(as_ad=False)
 
-linearization = "newton"  # linearization of the bulk equations
+linearization = "modified_picard"  # linearization of the bulk equations
 if linearization == "newton":
     accum_frac_active = vol_ad(h_frac)
     accum_frac_inactive = vol_ad(h_frac_n) * (-1)
@@ -374,7 +376,7 @@ accum_frac = accum_frac_active + accum_frac_inactive
 # Declare conservation equation
 # TODO: sources_from_mortar are the integrated mortar fluxes. Check if we need to scale
 #  this by some factor, before multiplying by the aperture.
-conserv_frac_eq = accum_frac - dt_ad * sources_from_mortar
+conserv_frac_eq = accum_frac - 0.5 * dt_ad * aperture_ad * sources_from_mortar
 
 # Evaluate and discretize
 conserv_frac_eq.discretize(gb=gb)
@@ -425,7 +427,7 @@ proj_tr_psi_bulk_m = (
 )
 
 # Get projected ghost fracture hydraulic head onto the adjacent mortar grids
-pfh = mdu.GhostHydraulicHead(gb=gb, ghost_gb=ghost_gb)
+pfh = GhostHydraulicHead(gb=gb, ghost_gb=ghost_gb)
 frac_to_mortar_ad: pp.ad.Function = pfh.proj_fra_hyd_head(as_ad=True)
 proj_h_frac = frac_to_mortar_ad(h_frac)
 
@@ -436,7 +438,7 @@ is_conductive = pp.ad.ParameterArray(param_key, "is_conductive", edges=edge_list
 # Interface flux
 mortar_flux = (
         krw_ad(proj_tr_psi_bulk_m)
-        * robin.mortar_discr * (proj_tr_h_bulk -  proj_h_frac) * is_conductive
+        * robin.mortar_discr * (proj_tr_h_bulk - proj_h_frac) * is_conductive
 )
 interface_flux_eq = mortar_flux + lmbda
 interface_flux_eq.discretize(gb=gb)
@@ -492,13 +494,13 @@ for val in d_frac_ghost[pp.STATE]["pressure_head"] <= 0:
 
 water_table = [d_frac[pp.STATE][node_var][0] - pressure_threshold]
 water_vol = [vol(d_frac[pp.STATE][node_var])[0]]
-exporter_ghost = pp.Exporter(ghost_gb, "single_frac", "out")
-exporter_ghost.write_vtu([node_var, "pressure_head", edge_var], time_step=0)
+#exporter_ghost = pp.Exporter(ghost_gb, "single_frac", "out")
+#exporter_ghost.write_vtu([node_var, "pressure_head", edge_var], time_step=0)
 
 # %% Time loop
 total_iteration_counter: int = 0
 iters: list = []
-abs_tol: float = 1e-6
+abs_tol: float = 1e-10
 is_mortar_conductive: np.ndarray = np.zeros(gb.num_mortar_cells(), dtype=np.int8)
 control_faces: np.ndarray = is_mortar_conductive
 
@@ -591,7 +593,8 @@ while tsc.time < tsc.time_final:
     tsc.next_time_step(recompute_solution=False, iterations=iteration_counter - 1)
     param_update.update_time_step(tsc.dt)
     print(
-        f"Fracture water table height: {d_frac[pp.STATE][node_var][0] - pressure_threshold}"
+        f"Fracture water table height: "
+        f"{d_frac[pp.STATE][node_var][0] - pressure_threshold}"
     )
     print(f"Fracture water volume: {vol(d_frac[pp.STATE][node_var])[0]}")
     water_table.append(d_frac[pp.STATE][node_var][0] - pressure_threshold)
@@ -639,8 +642,14 @@ q_bulk_exact = ex.rock_darcy_flux(g_bulk, 0.5)
 q_intf_mpfa = d_edge[pp.STATE][pp.ITERATE]["mortar_flux"]
 q_intf_exact = ex.interface_darcy_flux(g_intf, 0.5)
 
-h_frac_mpfa = h_frac.evaluate(dof_manager).val + 5 - 0.25
+accum_frac_be = sources_from_mortar.evaluate(dof_manager).val[0]
+accum_frac_exact = ex.frac_accumulation(0.5)
+
+h_frac_mpfa = h_frac.evaluate(dof_manager).val - (pressure_threshold + 0.25)
 h_frac_exact = ex.fracture_hydraulic_head(0.5)
+
+vol_frac_mpfa = vol(h_frac_mpfa + (pressure_threshold + 0.25))
+vol_frac_exact = ex.fracture_volume(0.5)
 
 # pp.plot_grid(
 #     grid_list[0], h_bulk_mpfa, linewidth=0, plot_2d=True, title="h_bulk (MPFA)"
@@ -653,12 +662,17 @@ h_frac_exact = ex.fracture_hydraulic_head(0.5)
 error_h_bulk = relative_l2_error(g_bulk, h_bulk_exact, h_bulk_mpfa, True, True)
 error_q_bulk = relative_l2_error(g_bulk, q_bulk_exact, q_bulk_mpfa, True, False)
 error_q_intf = relative_l2_error(mg, q_intf_exact, q_intf_mpfa, True, True)
-error_h_frac = np.abs(h_frac_mpfa - h_frac_exact)
+error_h_frac = np.abs((h_frac_mpfa - h_frac_exact) / h_frac_exact)
+error_vol_frac = np.abs((vol_frac_mpfa - vol_frac_exact) / vol_frac_exact)
+
 
 print(
     f"Summary of errors: \n"
     f"Error h_bulk: {error_h_bulk} \n"
     f"Error q_bulk: {error_q_bulk} \n"
     f"Error q_intf: {error_q_intf} \n"
-    f"Error h_frac: {error_h_frac[0]}"
+    f"Error h_frac: {error_h_frac} \n"
+    f"Error vol_frac: {error_vol_frac} \n"
+    # f"Error dV_dt:
+    # {np.abs((accum_frac_be - accum_frac_exact) /accum_frac_exact) * 100}"
 )
