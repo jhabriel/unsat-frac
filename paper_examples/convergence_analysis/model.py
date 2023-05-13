@@ -93,7 +93,6 @@ def manufactured_model(
     # Parameter assignment
     param_update = mdu.ParameterUpdate(gb, param_key)  # object to update parameters
 
-    pressure_threshold = -5
     for g, d in gb:
         if g.dim == gb.dim_max():
             # Boundary conditions
@@ -103,7 +102,9 @@ def manufactured_model(
             bc_values = ex.rock_boundary_hydraulic_head(g, time=tsc.time_final)
 
             # Initialize bulk data
+            pressure_threshold = -5 * np.ones(g.num_cells)
             specified_parameters: dict = {
+                "pressure_threshold": pressure_threshold,
                 "second_order_tensor": pp.SecondOrderTensor(np.ones(g.num_cells)),
                 "bc": bc,
                 "bc_values": bc_values,
@@ -129,11 +130,12 @@ def manufactured_model(
     for e, d in gb.edges():
         mg = d["mortar_grid"]
         zeros = np.zeros(mg.num_cells)
-        g_sec, _ = gb.nodes_of_edge(e)
+        g_sec, g_prim = gb.nodes_of_edge(e)
         exact_normal_flux = (
             ex.interface_darcy_flux(mg, tsc.time_final) / mg.cell_volumes
         )
-        exact_hyd_head_jump = ex.c_unsat - pressure_threshold  # 4
+        psi_l = np.mean(pressure_threshold)
+        exact_hyd_head_jump = ex.c_unsat - psi_l  # 4
         exact_k_rel = np.exp(ex.c_unsat)
         normal_diffusivity = exact_normal_flux / (exact_hyd_head_jump * exact_k_rel)
         is_conductive = zeros
@@ -157,7 +159,7 @@ def manufactured_model(
                 d,
                 state={
                     node_var: np.array(
-                        [pressure_threshold + d[pp.PARAMETERS][param_key]["datum"]]
+                        [np.mean(pressure_threshold) + d[pp.PARAMETERS][param_key]["datum"]]
                     )
                 },
             )
@@ -348,6 +350,13 @@ def manufactured_model(
         * lmbda_m
     )
 
+    proj_tr_psi_l = (
+        projections.primary_to_mortar_avg
+        * bulk_face_prol
+        * mpfa_bulk.bound_pressure_cell
+        * pressure_threshold
+    )
+
     # Get projected ghost fracture hydraulic head onto the adjacent mortar grids
     pfh = mdu.GhostHydraulicHead(gb=gb, ghost_gb=ghost_gb)
     frac_to_mortar_ad: pp.ad.Function = pfh.proj_fra_hyd_head(as_ad=True)
@@ -400,8 +409,8 @@ def manufactured_model(
     pp.set_state(
         data=d_frac_ghost,
         state={
-            node_var: d_frac[pp.PARAMETERS][param_key]["datum"]
-            * np.ones(ghost_frac_list[0].num_cells),
+            node_var: d_frac[pp.PARAMETERS][param_key]["datum"] * np.ones(
+                ghost_frac_list[0].num_cells),
             "pressure_head": d_frac[pp.STATE][node_var] - z_frac_ghost,
         },
     )
@@ -410,13 +419,13 @@ def manufactured_model(
 
     # Correct values of pressure head in the fracture if negative
     for val in d_frac_ghost[pp.STATE]["pressure_head"] <= 0:
-        d_frac_ghost[pp.STATE]["pressure_head"][val] = pressure_threshold
+        d_frac_ghost[pp.STATE]["pressure_head"][val] = np.mean(pressure_threshold)
 
     # %% Time loop
     total_iteration_counter: int = 0
     iters: list = []
     abs_tol: float = 1e-6
-    is_mortar_conductive: np.ndarray = np.zeros(gb.num_mortar_cells(), dtype=np.int8)
+    is_mortar_conductive: np.ndarray = np.zeros(gb.num_mortar_cells(), dtype=np.int32)
     control_faces: np.ndarray = is_mortar_conductive
 
     # Time loop
@@ -457,7 +466,8 @@ def manufactured_model(
 
         # Recompute solution if negative volume is encountered
         if np.any(
-            vol(h_frac.evaluate(dof_manager).val - (pressure_threshold + 0.25)) < 0
+            vol(h_frac.evaluate(dof_manager).val - (np.mean(pressure_threshold) + 0.25))
+            < 0
         ):
             tsc.next_time_step(
                 recompute_solution=True, iterations=iteration_counter - 1
@@ -469,7 +479,13 @@ def manufactured_model(
 
         # Recompute solution is capillary barrier is overcome. Note that dt remains the same
         is_mortar_conductive = get_conductive_mortars(
-            gb, dof_manager, param_key, proj_tr_h_bulk, proj_h_frac, edge_list
+            gb,
+            dof_manager,
+            param_key,
+            proj_tr_h_bulk,
+            proj_h_frac,
+            proj_tr_psi_l,
+            edge_list,
         )
         if control_faces.sum() == 0 and is_mortar_conductive.sum() > 0:
             param_update.update_mortar_conductivity_state(
@@ -523,11 +539,12 @@ def manufactured_model(
     q_intf_exact = ex.interface_darcy_flux(g_intf, tsc.time_final)
     error_q_intf = relative_l2_error(mg, q_intf_exact, q_intf_mpfa, True, True)
 
-    h_frac_mpfa = h_frac.evaluate(dof_manager).val - (pressure_threshold + 0.25)
+    h_frac_mpfa = h_frac.evaluate(dof_manager).val - (np.mean(pressure_threshold) +
+                                                      0.25)
     h_frac_exact = ex.fracture_hydraulic_head(tsc.time_final)
     error_h_frac = relative_l2_error(g_frac, h_frac_exact, h_frac_mpfa, True, True)
 
-    vol_frac_mpfa = vol(h_frac_mpfa + (pressure_threshold + 0.25))
+    vol_frac_mpfa = vol(h_frac_mpfa + (np.mean(pressure_threshold) + 0.25))
     vol_frac_exact = ex.fracture_volume(tsc.time_final)
     error_vol_frac = relative_l2_error(
         g_frac, vol_frac_exact, vol_frac_mpfa, True, True
