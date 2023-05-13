@@ -17,7 +17,8 @@ class ExactSolution:
         x, y, t = sym.symbols("x y t")
 
         # Fracture's aperture
-        a_f = 1
+        aperture = 0.01
+        self.aperture = aperture
         c_unsat = -1
         self.c_unsat = c_unsat
 
@@ -75,7 +76,7 @@ class ExactSolution:
         vol_frac = (jump_coeff * t**2) / 2
 
         # Exact hydraulic head in the fracture
-        h_frac = vol_frac / a_f
+        h_frac = vol_frac / aperture
 
         # Public attributes
         self.h_rock = h_rock
@@ -290,7 +291,7 @@ class ExactSolution:
         return lmbda_cc
 
     def frac_accumulation(self, time: float):
-        """"Evaluates exact accumulation term in the fracture"""
+        """ "Evaluates exact accumulation term in the fracture"""
         t = sym.symbols("t")
         accum_fun = sym.lambdify(t, self.accum_frac, "numpy")
         return float(accum_fun(time))
