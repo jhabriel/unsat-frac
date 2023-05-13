@@ -1,12 +1,16 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+
 mpl.rc(
-    "font", family="Times New Roman",
+    "font",
+    family="Times New Roman",
 )
-plt.rcParams.update({
-    "text.usetex": True,
-})
+plt.rcParams.update(
+    {
+        "text.usetex": True,
+    }
+)
 from model import manufactured_model
 
 #%% Prepare for the analysis
@@ -87,7 +91,7 @@ for key in errors.keys():
         np.log2(errors[key]),
         linewidth=2,
         marker="s",
-        markersize="6"
+        markersize="6",
     )
 
     # Legend

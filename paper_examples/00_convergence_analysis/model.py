@@ -15,8 +15,8 @@ from exact_solution import ExactSolution
 
 
 def manufactured_model(
-        mesh_size: float,
-        export_to_paraview=False,
+    mesh_size: float,
+    export_to_paraview=False,
 ) -> dict[str, float]:
     """
     Model for convergence analysis of the numerical examples section.
@@ -62,7 +62,6 @@ def manufactured_model(
 
     for e, d in gb.edges():
         g_intf = d["mortar_grid"]
-
 
     # %% Time parameters
     tsc = pp.TimeSteppingControl(
@@ -131,7 +130,9 @@ def manufactured_model(
         mg = d["mortar_grid"]
         zeros = np.zeros(mg.num_cells)
         g_sec, _ = gb.nodes_of_edge(e)
-        exact_normal_flux = ex.interface_darcy_flux(mg, tsc.time_final) / mg.cell_volumes
+        exact_normal_flux = (
+            ex.interface_darcy_flux(mg, tsc.time_final) / mg.cell_volumes
+        )
         exact_hyd_head_jump = ex.c_unsat - pressure_threshold  # 4
         exact_k_rel = np.exp(ex.c_unsat)
         normal_diffusivity = exact_normal_flux / (exact_hyd_head_jump * exact_k_rel)
@@ -148,12 +149,9 @@ def manufactured_model(
         if g.dim == gfo.dim:
             pp.set_state(
                 d,
-                state={node_var: ex.c_unsat + d[pp.PARAMETERS][param_key]["elevation"]}
+                state={node_var: ex.c_unsat + d[pp.PARAMETERS][param_key]["elevation"]},
             )
-            pp.set_iterate(
-                d,
-                iterate={node_var: d[pp.STATE][node_var]}
-            )
+            pp.set_iterate(d, iterate={node_var: d[pp.STATE][node_var]})
         else:
             pp.set_state(
                 d,
@@ -209,14 +207,11 @@ def manufactured_model(
     def theta(pressure_head):
         return (1 - pressure_head) ** (-1)
 
-
     def krw(pressure_head):
         return pp.ad.exp(pressure_head)
 
-
     def smc(pressure_head):
         return (1 - pressure_head) ** (-2)
-
 
     theta_ad = pp.ad.Function(theta, name="water content")
     krw_ad = pp.ad.Function(krw, name="relative permeability")
@@ -281,7 +276,9 @@ def manufactured_model(
         raise NotImplementedError
 
     accumulation_bulk = accum_bulk_active + accum_bulk_inactive
-    conserv_bulk_eq = accumulation_bulk + dt_ad * div_bulk * flux_bulk - dt_ad * source_bulk
+    conserv_bulk_eq = (
+        accumulation_bulk + dt_ad * div_bulk * flux_bulk - dt_ad * source_bulk
+    )
 
     # Discretize and evaluate
     conserv_bulk_eq.discretize(gb=gb)
@@ -451,14 +448,20 @@ def manufactured_model(
 
         # Recompute solution if we did not achieve convergence
         if residual_norm > abs_tol or np.isnan(residual_norm):
-            tsc.next_time_step(recompute_solution=True, iterations=iteration_counter - 1)
+            tsc.next_time_step(
+                recompute_solution=True, iterations=iteration_counter - 1
+            )
             param_update.update_time_step(tsc.dt)
             set_iterate_as_state(gb, node_var, edge_var)
             continue
 
         # Recompute solution if negative volume is encountered
-        if np.any(vol(h_frac.evaluate(dof_manager).val - (pressure_threshold + 0.25)) < 0):
-            tsc.next_time_step(recompute_solution=True, iterations=iteration_counter - 1)
+        if np.any(
+            vol(h_frac.evaluate(dof_manager).val - (pressure_threshold + 0.25)) < 0
+        ):
+            tsc.next_time_step(
+                recompute_solution=True, iterations=iteration_counter - 1
+            )
             param_update.update_time_step(tsc.dt)
             print(f"Encountered negative volume. Reducing dt and recomputing solution.")
             set_iterate_as_state(gb, node_var, edge_var)
@@ -469,17 +472,23 @@ def manufactured_model(
             gb, dof_manager, param_key, proj_tr_h_bulk, proj_h_frac, edge_list
         )
         if control_faces.sum() == 0 and is_mortar_conductive.sum() > 0:
-            param_update.update_mortar_conductivity_state(is_mortar_conductive, edge_list)
+            param_update.update_mortar_conductivity_state(
+                is_mortar_conductive, edge_list
+            )
             print("Encountered saturated mortar cells. Recomputing solution")
             control_faces = is_mortar_conductive
             set_iterate_as_state(gb, node_var, edge_var)
-            tsc.time -= tsc.dt  # correct time since we are going to recompute the solution
+            tsc.time -= (
+                tsc.dt
+            )  # correct time since we are going to recompute the solution
             continue
         else:
             is_mortar_conductive: np.ndarray = np.zeros(
                 gb.num_mortar_cells(), dtype=np.int8
             )
-            param_update.update_mortar_conductivity_state(is_mortar_conductive, edge_list)
+            param_update.update_mortar_conductivity_state(
+                is_mortar_conductive, edge_list
+            )
             control_faces = is_mortar_conductive
 
         # Save number of iterations and time step
@@ -520,7 +529,9 @@ def manufactured_model(
 
     vol_frac_mpfa = vol(h_frac_mpfa + (pressure_threshold + 0.25))
     vol_frac_exact = ex.fracture_volume(tsc.time_final)
-    error_vol_frac = relative_l2_error(g_frac, vol_frac_exact, vol_frac_mpfa, True, True)
+    error_vol_frac = relative_l2_error(
+        g_frac, vol_frac_exact, vol_frac_mpfa, True, True
+    )
 
     # print(
     #     f"Summary of errors: \n"

@@ -1,76 +1,23 @@
 import mdunsat as mdu
 import numpy as np
 import porepy as pp
-import pickle
-import scipy.sparse as sps
 import scipy.sparse.linalg as spla
-import matplotlib.pyplot as plt
 
 from grid_factory import GridGenerator
+from mdunsat.analysis_utils import relative_l2_error
 from mdunsat.ad_utils import (
     get_conductive_mortars,
-    get_ghost_hydraulic_head,
     set_state_as_iterate,
     set_iterate_as_state,
 )
-from fracture_volume import FractureVolume
-from ghost_variables import GhostHydraulicHead
 from exact_solution import ExactSolution
-from typing import Union
-
-def relative_l2_error(
-        grid: Union[pp.Grid, pp.MortarGrid],
-        true_array: np.ndarray,
-        approx_array: np.ndarray,
-        is_scalar: bool,
-        is_cc: bool,
-) -> float:
-    """Compute discrete L2-error.
-    Parameters:
-        grid: Either a subdomain grid or a mortar grid.
-        true_array: Array containing the true values of a given variable.
-        approx_array: Array containing the approximate values of a given variable.
-        is_scalar: Whether the variable is a scalar quantity. Use ``False`` for
-            vector quantities. For example, ``is_scalar=True`` for pressure, whereas
-            ``is_scalar=False`` for displacement.
-        is_cc: Whether the variable is associated to cell centers. Use ``False``
-            for variables associated to face centers. For example, ``is_cc=True``
-            for pressures, whereas ``is_scalar=False`` for subdomain fluxes.
-    Returns:
-        Discrete relative L2-error between the true and approximated arrays.
-    Raises:
-        ValueError if a mortar grid is given and ``is_cc=False``.
-    """
-    # Sanity check
-    if isinstance(grid, pp.MortarGrid) and not is_cc:
-        raise ValueError("Mortar variables can only be cell-centered.")
-
-    # Obtain proper measure
-    if is_cc:
-        if is_scalar:
-            meas = grid.cell_volumes
-        else:
-            meas = grid.cell_volumes.repeat(grid.dim)
-    else:
-        assert isinstance(grid, pp.Grid)
-        if is_scalar:
-            meas = grid.face_areas
-        else:
-            meas = grid.face_areas.repeat(grid.dim)
-
-    # Compute error
-    numerator = np.sqrt(np.sum(meas * np.abs(true_array - approx_array) ** 2))
-    denominator = np.sqrt(np.sum(meas * np.abs(true_array) ** 2))
-
-    return numerator / denominator
-
 
 # %% Retrieve exact solution object
 ex = ExactSolution()
 
 # %% Retrieve grid buckets
 gfo = GridGenerator(
-    mesh_args={"mesh_size_frac": 0.1, "mesh_size_bound": 0.1},
+    mesh_args={"mesh_size_frac": 0.01, "mesh_size_bound": 0.01},
     csv_file="network.csv",
     domain={"xmin": 0, "ymin": 0, "xmax": 1, "ymax": 1},
     constraints=[1, 2],
@@ -97,16 +44,12 @@ for e, d in gb.edges():
     g_intf = d["mortar_grid"]
 
 
-# Uncomment to export grid
-# export_mesh = pp.Exporter(ghost_gb, file_name="grid", folder_name="out")
-# export_mesh.write_vtu(ghost_gb)
-
 # %% Time parameters
 tsc = pp.TimeSteppingControl(
     schedule=[0, 0.5],
     dt_init=0.5,
     dt_min_max=(0.01, 0.5),
-    iter_max=300,
+    iter_max=15,
     iter_optimal_range=(4, 7),
     iter_lowupp_factor=(1.3, 0.7),
     recomp_factor=0.5,
@@ -156,7 +99,7 @@ for g, d in gb:
     else:
         # Parameters for the fracture grids
         specified_parameters = {
-            "aperture": 1.0,
+            "aperture": 1,
             "datum": np.min(g.face_centers[gb.dim_max() - 1]),
             "elevation": g.cell_centers[gb.dim_max() - 1],
             "sin_alpha": 1.0,
@@ -187,8 +130,7 @@ for e, d in gb.edges():
 # %% Set initial states
 for g, d in gb:
     if g.dim == gfo.dim:
-        pp.set_state(d, state={node_var: -1 + d[pp.PARAMETERS][param_key][
-            "elevation"]})
+        pp.set_state(d, state={node_var: -1 + d[pp.PARAMETERS][param_key]["elevation"]})
         pp.set_iterate(d, iterate={node_var: d[pp.STATE][node_var]})
     else:
         pp.set_state(
@@ -332,12 +274,12 @@ conserv_bulk_num = conserv_bulk_eq.evaluate(dof_manager=dof_manager)
 # %% Governing equations in the fracture
 
 # Get water volume as a function of the hydraulic head, and its first derivative
-fv = FractureVolume(gb=gb, fracture_grids=frac_list, param_key=param_key)
+fv = mdu.FractureVolume(gb=gb, fracture_grids=frac_list, param_key=param_key)
 vol_ad: pp.ad.Function = fv.fracture_volume(as_ad=True)
 vol_cap_ad: pp.ad.Function = fv.volume_capacity(as_ad=True)
 vol = fv.fracture_volume(as_ad=False)
 
-linearization = "newton"  # linearization of the bulk equations
+linearization = "newton"  # linearization of the fracture equations
 if linearization == "newton":
     accum_frac_active = vol_ad(h_frac)
     accum_frac_inactive = vol_ad(h_frac_n) * (-1)
@@ -353,24 +295,14 @@ elif linearization == "l_scheme":
 else:
     raise NotImplementedError
 
-# Concatenate apertures from relevant grids, and converted into a pp.ad.Matrix
-aperture = np.array(
-    [
-        d[pp.PARAMETERS][param_key]["aperture"]
-        for g, d in gb
-        if g.dim == gb.dim_max() - 1
-    ]
-)
-aperture_ad = pp.ad.Matrix(sps.spdiags(aperture, 0, aperture.size, aperture.size))
 # Retrieve sources from mortar
 sources_from_mortar = frac_cell_rest * projections.mortar_to_secondary_int * lmbda
 # Accumulation terms
 accum_frac = accum_frac_active + accum_frac_inactive
 # Declare conservation equation
-# TODO: sources_from_mortar are the integrated mortar fluxes. Check if we need to scale
-#  this by some factor, before multiplying by the aperture.
-# We need to divide the sources_from_mortar by 2 to get the correct result
-conserv_frac_eq = accum_frac - 0.5 * tsc.dt * aperture_ad * sources_from_mortar
+# NOTE: We need to divide the sources_from_mortar by 2 to get the correct result
+conserv_frac_eq = accum_frac - 0.5 * tsc.dt * sources_from_mortar
+
 
 # Evaluate and discretize
 conserv_frac_eq.discretize(gb=gb)
@@ -421,7 +353,7 @@ proj_tr_psi_bulk_m = (
 )
 
 # Get projected ghost fracture hydraulic head onto the adjacent mortar grids
-pfh = GhostHydraulicHead(gb=gb, ghost_gb=ghost_gb)
+pfh = mdu.GhostHydraulicHead(gb=gb, ghost_gb=ghost_gb)
 frac_to_mortar_ad: pp.ad.Function = pfh.proj_fra_hyd_head(as_ad=True)
 proj_h_frac = frac_to_mortar_ad(h_frac)
 
@@ -431,8 +363,10 @@ is_conductive = pp.ad.ParameterArray(param_key, "is_conductive", edges=edge_list
 
 # Interface flux
 mortar_flux = (
-        krw_ad(proj_tr_psi_bulk_m)
-        * robin.mortar_discr * (proj_tr_h_bulk - proj_h_frac) * is_conductive
+    krw_ad(proj_tr_psi_bulk_m)
+    * robin.mortar_discr
+    * (proj_tr_h_bulk - proj_h_frac)
+    * is_conductive
 )
 interface_flux_eq = mortar_flux + lmbda
 interface_flux_eq.discretize(gb=gb)
@@ -488,8 +422,8 @@ for val in d_frac_ghost[pp.STATE]["pressure_head"] <= 0:
 
 water_table = [d_frac[pp.STATE][node_var][0] - pressure_threshold]
 water_vol = [vol(d_frac[pp.STATE][node_var])[0]]
-#exporter_ghost = pp.Exporter(ghost_gb, "single_frac", "out")
-#exporter_ghost.write_vtu([node_var, "pressure_head", edge_var], time_step=0)
+# exporter_ghost = pp.Exporter(ghost_gb, "single_frac", "out")
+# exporter_ghost.write_vtu([node_var, "pressure_head", edge_var], time_step=0)
 
 # %% Time loop
 total_iteration_counter: int = 0
@@ -548,13 +482,13 @@ while tsc.time < tsc.time_final:
         set_iterate_as_state(gb, node_var, edge_var)
         continue
 
-    # # Recompute solution if negative volume is encountered
-    # if np.any(vol(h_frac.evaluate(dof_manager).val) < 0):
-    #     tsc.next_time_step(recompute_solution=True, iterations=iteration_counter - 1)
-    #     param_update.update_time_step(tsc.dt)
-    #     print(f"Encountered negative volume. Reducing dt and recomputing solution.")
-    #     set_iterate_as_state(gb, node_var, edge_var)
-    #     continue
+    # Recompute solution if negative volume is encountered
+    if np.any(vol(h_frac.evaluate(dof_manager).val - (pressure_threshold + 0.25)) < 0):
+        tsc.next_time_step(recompute_solution=True, iterations=iteration_counter - 1)
+        param_update.update_time_step(tsc.dt)
+        print(f"Encountered negative volume. Reducing dt and recomputing solution.")
+        set_iterate_as_state(gb, node_var, edge_var)
+        continue
 
     # Recompute solution is capillary barrier is overcome. Note that dt remains the same
     is_mortar_conductive = get_conductive_mortars(
@@ -562,10 +496,6 @@ while tsc.time < tsc.time_final:
     )
     if control_faces.sum() == 0 and is_mortar_conductive.sum() > 0:
         param_update.update_mortar_conductivity_state(is_mortar_conductive, edge_list)
-        # print(
-        #     f"The faces {np.where(is_mortar_conductive)[0]} are saturated. "
-        #     f"Solution will be recomputed."
-        # )
         print("Encountered saturated mortar cells. Recomputing solution")
         control_faces = is_mortar_conductive
         set_iterate_as_state(gb, node_var, edge_var)
@@ -596,36 +526,6 @@ while tsc.time < tsc.time_final:
     set_state_as_iterate(gb, node_var, edge_var)
     print()
 
-    # # Export to ParaView
-    # pp.set_state(
-    #     data=d_bulk_ghost,
-    #     state={
-    #         node_var: d_bulk[pp.STATE][node_var],
-    #         "pressure_head": d_bulk[pp.STATE][node_var] - z_bulk,
-    #     },
-    # )
-    # pp.set_state(
-    #     data=d_frac_ghost,
-    #     state={
-    #         node_var: get_ghost_hydraulic_head(
-    #             ghost_frac_list[0], d_frac[pp.STATE][node_var]
-    #         ),
-    #         "pressure_head": get_ghost_hydraulic_head(
-    #             ghost_frac_list[0], d_frac[pp.STATE][node_var]
-    #         )
-    #         - z_frac_ghost,
-    #     },
-    # )
-    # pp.set_state(data=d_edge_ghost, state={edge_var: d_edge[pp.STATE][edge_var]})
-    # # Correct values of pressure head in the fracture if negative
-    # for val in d_frac_ghost[pp.STATE]["pressure_head"] <= 0:
-    #     d_frac_ghost[pp.STATE]["pressure_head"][val] = 0
-    # if tsc.time in tsc.schedule:
-    #     export_counter += 1
-    #     exporter_ghost.write_vtu(
-    #         [node_var, "pressure_head", edge_var], time_step=export_counter
-    #     )
-
 #%% Plotting
 h_bulk_mpfa = d_bulk[pp.STATE][pp.ITERATE]["hydraulic_head"]
 h_bulk_exact = ex.rock_hydraulic_head(g_bulk, tsc.time_final)
@@ -645,20 +545,12 @@ h_frac_exact = ex.fracture_hydraulic_head(tsc.time_final)
 vol_frac_mpfa = vol(h_frac_mpfa + (pressure_threshold + 0.25))
 vol_frac_exact = ex.fracture_volume(tsc.time_final)
 
-# pp.plot_grid(
-#     grid_list[0], h_bulk_mpfa, linewidth=0, plot_2d=True, title="h_bulk (MPFA)"
-# )
-# pp.plot_grid(
-#     grid_list[0], h_bulk_exact, linewidth=0, plot_2d=True, title="h_bulk (Exact)"
-# )
-
 #%% Errors
 error_h_bulk = relative_l2_error(g_bulk, h_bulk_exact, h_bulk_mpfa, True, True)
 error_q_bulk = relative_l2_error(g_bulk, q_bulk_exact, q_bulk_mpfa, True, False)
 error_q_intf = relative_l2_error(mg, q_intf_exact, q_intf_mpfa, True, True)
-error_h_frac = np.abs((h_frac_mpfa - h_frac_exact) / h_frac_exact)[0]
-error_vol_frac = np.abs((vol_frac_mpfa - vol_frac_exact) / vol_frac_exact)[0]
-
+error_h_frac = relative_l2_error(g_frac, h_frac_exact, h_frac_mpfa, True, True)
+error_vol_frac = relative_l2_error(g_frac, vol_frac_exact, vol_frac_mpfa, True, True)
 
 print(
     f"Summary of errors: \n"
@@ -667,5 +559,12 @@ print(
     f"Error q_intf: {error_q_intf} \n"
     f"Error h_frac: {error_h_frac} \n"
     f"Error vol_frac: {error_vol_frac} \n"
-
 )
+
+errors_dict = {
+    "error_h_bulk": error_h_bulk,
+    "error_q_bulk": error_q_bulk,
+    "error_q_intf": error_q_intf,
+    "error_h_frac": error_h_frac,
+    "error_vol_frac": error_vol_frac,
+}
