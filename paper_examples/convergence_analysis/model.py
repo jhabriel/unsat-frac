@@ -3,6 +3,8 @@ import numpy as np
 import porepy as pp
 import scipy.sparse.linalg as spla
 import scipy.sparse as sps
+from scipy.stats import hmean
+
 
 from grid_factory import GridGenerator
 from mdunsat.ad_utils import (
@@ -50,9 +52,12 @@ def manufactured_model(
     frac_list = gfo.get_fracture_list(gb)
     edge_list = gfo.get_edge_list(gb)
 
+    ghost_grid_list = gfo.get_grid_list(ghost_gb)
     ghost_bulk_list = gfo.get_bulk_list(ghost_gb)
     ghost_frac_list = gfo.get_fracture_list(ghost_gb)
     ghost_edge_list = gfo.get_edge_list(ghost_gb)
+    ghost_low_dim_grids = [g for g, _ in ghost_gb if g.dim < gb.dim_max()]
+
 
     for g, _ in gb:
         if g.dim == 2:
@@ -123,6 +128,7 @@ def manufactured_model(
                 "elevation": g.cell_centers[gb.dim_max() - 1],
                 "sin_alpha": 1.0,
                 "width": 1.0,
+                "mean_threshold": -hmean(np.abs(pressure_threshold)),
             }
             pp.initialize_data(g, d, param_key, specified_parameters)
 
@@ -288,7 +294,11 @@ def manufactured_model(
     # %% Governing equations in the fracture
 
     # Get water volume as a function of the hydraulic head, and its first derivative
-    fv = mdu.FractureVolume(gb=gb, fracture_grids=frac_list, param_key=param_key)
+    fv = mdu.FractureVolume(
+        gb=gb,
+        fracture_grids=frac_list,
+        param_key=param_key
+    )
     vol_ad: pp.ad.Function = fv.fracture_volume(as_ad=True)
     vol_cap_ad: pp.ad.Function = fv.volume_capacity(as_ad=True)
     vol = fv.fracture_volume(as_ad=False)
@@ -323,7 +333,16 @@ def manufactured_model(
     # %% Governing equations on the interfaces
     robin = pp.ad.RobinCouplingAd(param_key, edge_list)
 
-    # Projected bulk pressure traces onto the mortar grid
+    # Projected pressure threshold traces onto the mortar grid.
+    # Can be parsed right away since this is a non-ad array and always known
+    proj_tr_psi_l: np.ndarray = (
+            projections.primary_to_mortar_avg.parse(gb)
+            * bulk_face_prol.parse(gb)
+            * mpfa_bulk.bound_pressure_cell.parse(gb)
+            * pressure_threshold
+    )
+
+    # Projected bulk pressure traces onto the mortar grid.
     proj_tr_h_bulk = (
         projections.primary_to_mortar_avg
         * bulk_face_prol
@@ -350,15 +369,12 @@ def manufactured_model(
         * lmbda_m
     )
 
-    proj_tr_psi_l = (
-        projections.primary_to_mortar_avg
-        * bulk_face_prol
-        * mpfa_bulk.bound_pressure_cell
-        * pressure_threshold
-    )
-
     # Get projected ghost fracture hydraulic head onto the adjacent mortar grids
-    pfh = mdu.GhostHydraulicHead(gb=gb, ghost_gb=ghost_gb)
+    pfh = mdu.GhostHydraulicHead(
+        gb=gb,
+        ghost_gb=ghost_gb,
+        mortar_proj_pressure_threshold=proj_tr_psi_l,
+    )
     frac_to_mortar_ad: pp.ad.Function = pfh.proj_fra_hyd_head(as_ad=True)
     proj_h_frac = frac_to_mortar_ad(h_frac)
 
