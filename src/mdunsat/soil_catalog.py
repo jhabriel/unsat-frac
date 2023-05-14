@@ -9,6 +9,8 @@ Data source:
 
 from dataclasses import dataclass
 
+__all__ = ["soil_catalog"]
+
 
 @dataclass
 class Soil:
