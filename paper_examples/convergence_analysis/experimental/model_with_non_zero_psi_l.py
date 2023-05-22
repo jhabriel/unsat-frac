@@ -2,6 +2,9 @@ import mdunsat as mdu
 import numpy as np
 import porepy as pp
 import scipy.sparse.linalg as spla
+import scipy.sparse as sps
+from scipy.stats import hmean
+
 
 from grid_factory import GridGenerator
 from mdunsat.ad_utils import (
@@ -10,7 +13,7 @@ from mdunsat.ad_utils import (
     set_iterate_as_state,
 )
 from mdunsat.analysis_utils import relative_l2_error
-from exact_solution import ExactSolution
+from exact_sol_non_zero_psi_l import ExactSolution
 
 
 def manufactured_model(
@@ -49,9 +52,11 @@ def manufactured_model(
     frac_list = gfo.get_fracture_list(gb)
     edge_list = gfo.get_edge_list(gb)
 
+    ghost_grid_list = gfo.get_grid_list(ghost_gb)
     ghost_bulk_list = gfo.get_bulk_list(ghost_gb)
     ghost_frac_list = gfo.get_fracture_list(ghost_gb)
     ghost_edge_list = gfo.get_edge_list(ghost_gb)
+    ghost_low_dim_grids = [g for g, _ in ghost_gb if g.dim < gb.dim_max()]
 
     for g, _ in gb:
         if g.dim == 2:
@@ -65,15 +70,17 @@ def manufactured_model(
     # %% Time parameters
     tsc = pp.TimeSteppingControl(
         schedule=[0, 0.5],
-        dt_init=0.25 / 16,
-        dt_min_max=(0.01, 0.1),
-        iter_max=200,
-        iter_optimal_range=(1, 100),  # dirty trick to use constant time step
+        dt_init=0.5,
+        dt_min_max=(0.01, 0.5),
+        iter_max=15,
+        iter_optimal_range=(4, 7),
         iter_lowupp_factor=(1.3, 0.7),
         recomp_factor=0.5,
         recomp_max=12,
         print_info=True,
     )
+    times = [tsc.time]
+    dts = [tsc.dt]
 
     # %% Assign parameters
     # Keywords
@@ -96,16 +103,16 @@ def manufactured_model(
             bc_faces = g.get_boundary_faces()
             bc_type = np.array(bc_faces.size * ["dir"])
             bc = pp.BoundaryCondition(g, faces=bc_faces, cond=list(bc_type))
-            bc_values = ex.rock_boundary_hydraulic_head(g, time=tsc.time)
+            bc_values = ex.rock_boundary_hydraulic_head(g, time=tsc.time_final)
 
             # Initialize bulk data
-            pressure_threshold = 0 * np.ones(g.num_cells)
+            pressure_threshold = -5 * np.ones(g.num_cells)
             specified_parameters: dict = {
                 "pressure_threshold": pressure_threshold,
                 "second_order_tensor": pp.SecondOrderTensor(np.ones(g.num_cells)),
                 "bc": bc,
                 "bc_values": bc_values,
-                "source": ex.rock_source(g, time=tsc.time),
+                "source": ex.rock_source(g, time=tsc.time_final),
                 "elevation": g.cell_centers[gb.dim_max() - 1],
                 "mass_weight": np.ones(g.num_cells),
                 "time_step": tsc.dt,  # [s]
@@ -120,7 +127,7 @@ def manufactured_model(
                 "elevation": g.cell_centers[gb.dim_max() - 1],
                 "sin_alpha": 1.0,
                 "width": 1.0,
-                "pressure_threshold": 0,
+                "pressure_threshold": -5,
             }
             pp.initialize_data(g, d, param_key, specified_parameters)
 
@@ -128,19 +135,20 @@ def manufactured_model(
     for e, d in gb.edges():
         mg = d["mortar_grid"]
         zeros = np.zeros(mg.num_cells)
+        g_sec, g_prim = gb.nodes_of_edge(e)
         exact_normal_flux = (
             ex.interface_darcy_flux(mg, tsc.time_final) / mg.cell_volumes
         )
-        zeta_mortar = mg.cell_centers[gb.dim_max() - 1]
         psi_l = np.mean(pressure_threshold)
-        exact_hyd_head_jump = ex.c_sat - (0 + zeta_mortar)  # exact jump
-        normal_diffusivity = exact_normal_flux / (exact_hyd_head_jump * 1)
+        exact_hyd_head_jump = ex.c_unsat - psi_l  # 4
+        exact_k_rel = np.exp(ex.c_unsat)
+        normal_diffusivity = exact_normal_flux / (exact_hyd_head_jump * exact_k_rel)
         is_conductive = zeros
         data = {
             "normal_diffusivity": normal_diffusivity,
             "is_conductive": is_conductive,
             "elevation": mg.cell_centers[gb.dim_max() - 1],
-            "pressure_threshold": 0 * np.ones(mg.num_cells),
+            "pressure_threshold": -5 * np.ones(mg.num_cells),
         }
         pp.initialize_data(mg, d, param_key, data)
 
@@ -149,7 +157,7 @@ def manufactured_model(
         if g.dim == gfo.dim:
             pp.set_state(
                 d,
-                state={node_var: ex.rock_hydraulic_head(bulk_list[0], time=0)},
+                state={node_var: ex.c_unsat + d[pp.PARAMETERS][param_key]["elevation"]},
             )
             pp.set_iterate(d, iterate={node_var: d[pp.STATE][node_var]})
         else:
@@ -205,45 +213,16 @@ def manufactured_model(
     frac_cell_rest: pp.ad.Matrix = subdomain_proj_scalar.cell_restriction(frac_list)
 
     # %% Governing equations in the bulk
+
     # Soil water retention curves
     def theta(pressure_head):
-
-        if isinstance(pressure_head, pp.ad.Ad_array):
-            is_unsat = 1 - pp.ad.heaviside(pressure_head.val, 1)
-            is_sat = 1 - is_unsat
-            theta_val = (1 - pressure_head) ** (-1) * is_unsat + 1 * is_sat
-        else:
-            is_unsat = 1 - pp.ad.heaviside(pressure_head, 1)
-            is_sat = 1 - is_unsat
-            theta_val = (1 - pressure_head) ** (-1) * is_unsat + 1 * is_sat
-
-        return theta_val
+        return (1 - pressure_head) ** (-1)
 
     def krw(pressure_head):
-
-        if isinstance(pressure_head, pp.ad.Ad_array):
-            is_unsat = 1 - pp.ad.heaviside(pressure_head.val, 1)
-            is_sat = 1 - is_unsat
-            krw_val = pp.ad.exp(pressure_head) * is_unsat + 1 * is_sat
-        else:
-            is_unsat = 1 - pp.ad.heaviside(pressure_head, 1)
-            is_sat = 1 - is_unsat
-            krw_val = np.exp(pressure_head) * is_unsat + 1 * is_sat
-
-        return krw_val
+        return pp.ad.exp(pressure_head)
 
     def smc(pressure_head):
-
-        if isinstance(pressure_head, pp.ad.Ad_array):
-            is_unsat = 1 - pp.ad.heaviside(pressure_head.val, 1)
-            is_sat = 1 - is_unsat
-            smc_val = (1 - pressure_head) ** (-2) * is_unsat + 0 * is_sat
-        else:
-            is_unsat = 1 - pp.ad.heaviside(pressure_head, 1)
-            is_sat = 1 - is_unsat
-            smc_val = (1 - pressure_head) ** (-2) * is_unsat + 0 * is_sat
-
-        return smc_val
+        return (1 - pressure_head) ** (-2)
 
     theta_ad = pp.ad.Function(theta, name="water content")
     krw_ad = pp.ad.Function(krw, name="relative permeability")
@@ -466,7 +445,7 @@ def manufactured_model(
     # %% Time loop
     total_iteration_counter: int = 0
     iters: list = []
-    abs_tol: float = 1e-10
+    abs_tol: float = 1e-6
     is_mortar_conductive: np.ndarray = np.zeros(gb.num_mortar_cells(), dtype=np.int32)
     control_faces: np.ndarray = is_mortar_conductive
 
@@ -476,18 +455,6 @@ def manufactured_model(
         iteration_counter: int = 0
         residual_norm: float = 1.0
         print(f"Time: {tsc.time}")
-
-        zeta_mortar = mg.cell_centers[gb.dim_max() - 1]
-        exact_hyd_head_jump = ex.c_sat - (0 + zeta_mortar)  # exact jump
-        d_edge[pp.PARAMETERS]["flow"]["normal_diffusivity"] = (
-            ex.interface_darcy_flux(mg, tsc.time) / mg.cell_volumes
-        ) / exact_hyd_head_jump
-        d_bulk[pp.PARAMETERS]["flow"]["bc_values"] = ex.rock_boundary_hydraulic_head(
-            g_bulk, tsc.time
-        )
-        d_bulk[pp.PARAMETERS]["flow"]["source"] = ex.rock_source(g_bulk, tsc.time)
-
-        equation_manager.discretize(gb)
 
         # Solver loop
         while iteration_counter <= tsc.iter_max and not residual_norm < abs_tol:
@@ -519,7 +486,10 @@ def manufactured_model(
             continue
 
         # Recompute solution if negative volume is encountered
-        if np.any(vol(h_frac.evaluate(dof_manager).val) < 0):
+        if np.any(
+            vol(h_frac.evaluate(dof_manager).val - (np.mean(pressure_threshold) + 0.25))
+            < 0
+        ):
             tsc.next_time_step(
                 recompute_solution=True, iterations=iteration_counter - 1
             )
@@ -543,9 +513,6 @@ def manufactured_model(
                 is_mortar_conductive, edge_list
             )
             print("Encountered saturated mortar cells. Recomputing solution")
-            # print(f"Number of mortar cells: {gb.num_mortar_cells()}")
-            # print(f"Number of conductive mortars: {is_mortar_conductive.sum()}")
-
             control_faces = is_mortar_conductive
             set_iterate_as_state(gb, node_var, edge_var)
             tsc.time -= (
@@ -563,26 +530,13 @@ def manufactured_model(
 
         # Save number of iterations and time step
         iters.append(iteration_counter - 1)
+        times.append(tsc.time)
+        dts.append(tsc.dt)
 
         # Successful convergence
         tsc.next_time_step(recompute_solution=False, iterations=iteration_counter - 1)
         param_update.update_time_step(tsc.dt)
-
-        """We need to fix the values of the volume and hydraulic head, since the 
-        exact solution is based on the assumption of zero initial volume."""
-        vol_frac_mpfa = (
-            vol(d_frac[pp.STATE][node_var])[0]
-            + vol(d_frac[pp.STATE][pp.ITERATE][node_var])[0]
-        )
-        h_frac_mpfa = (
-            d_frac[pp.STATE][node_var][0] + d_frac[pp.STATE][pp.ITERATE][node_var][0]
-        ) - 0.25
         set_state_as_iterate(gb, node_var, edge_var)
-        print(f"h1_mpfa: {h_frac_mpfa}")
-        print(f"h1_ex: {ex.fracture_hydraulic_head(tsc.time)}")
-        print(f"vol_mpfa: {vol_frac_mpfa}")
-        print(f"vol_ex: {ex.fracture_volume(tsc.time)}")
-
         print()
 
     if export_to_paraview:
@@ -606,11 +560,13 @@ def manufactured_model(
     q_intf_exact = ex.interface_darcy_flux(g_intf, tsc.time_final)
     error_q_intf = relative_l2_error(mg, q_intf_exact, q_intf_mpfa, True, True)
 
-    # h_frac_mpfa = h_frac.evaluate(dof_manager).val
+    h_frac_mpfa = h_frac.evaluate(dof_manager).val - (
+        np.mean(pressure_threshold) + 0.25
+    )
     h_frac_exact = ex.fracture_hydraulic_head(tsc.time_final)
     error_h_frac = relative_l2_error(g_frac, h_frac_exact, h_frac_mpfa, True, True)
 
-    # vol_frac_mpfa = vol(h_frac_mpfa)
+    vol_frac_mpfa = vol(h_frac_mpfa + (np.mean(pressure_threshold) + 0.25))
     vol_frac_exact = ex.fracture_volume(tsc.time_final)
     error_vol_frac = relative_l2_error(
         g_frac, vol_frac_exact, vol_frac_mpfa, True, True
