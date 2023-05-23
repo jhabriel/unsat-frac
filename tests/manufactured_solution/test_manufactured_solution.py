@@ -5,7 +5,7 @@ import pytest
 import sys
 sys.path.append("..")
 
-from paper_examples.convergence_analysis.model import manufactured_model
+from paper_examples.convergence_analysis.model_with_non_zero_psi_l import manufactured_model
 
 
 @pytest.fixture(scope="module")
