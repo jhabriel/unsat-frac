@@ -44,7 +44,7 @@ class GridGenerator:
         return "Grid factory object corresponding to the first example."
 
     def get_grid_buckets(self) -> Tuple[pp.GridBucket, pp.GridBucket]:
-        """ Construct physical and ghost grid buckets """
+        """Construct physical and ghost grid buckets"""
 
         # First, create the ghost grid bucket
         network = pp.fracture_importer.network_2d_from_csv(
@@ -84,7 +84,9 @@ class GridGenerator:
         frac_length = [g.cell_volumes.sum() for g in ghost_frac_list]
 
         # Create the physical fractures as 1D grids with only one cell and their length
-        mono_fracs = [pp.CartGrid(np.array([1]), physdims=length) for length in frac_length]
+        mono_fracs = [
+            pp.CartGrid(np.array([1]), physdims=length) for length in frac_length
+        ]
 
         # Perturb the nodes of the created fracture grids. The perturbation
         # will be perform such that their nodes match with the physical nodes
