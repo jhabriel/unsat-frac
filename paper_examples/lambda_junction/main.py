@@ -2,7 +2,6 @@ import mdunsat as mdu
 import numpy as np
 import porepy as pp
 import pickle
-import scipy.sparse as sps
 import scipy.sparse.linalg as spla
 
 from grid_factory import GridGenerator
@@ -10,8 +9,10 @@ from mdunsat.ad_utils import (
     get_conductive_mortars,
     get_ghost_hydraulic_head,
     set_state_as_iterate,
-    set_iterate_as_state
+    set_iterate_as_state,
+    bulk_cc_var_to_mortar_grid
 )
+from mdunsat.soil_catalog import soil_catalog
 
 # %% Retrieve grid buckets
 gfo = GridGenerator(
@@ -20,9 +21,7 @@ gfo = GridGenerator(
     domain={"xmin": 0, "ymin": 0, "xmax": 100, "ymax": 100},
     constraints=[3, 4],
 )
-
 gfo.get_grid_buckets()
-
 gb, ghost_gb = gfo.get_grid_buckets()
 
 grid_list = gfo.grid_list(gb)
@@ -49,12 +48,8 @@ ghost_lfn_list = gfo.local_fracture_network_grid_list(ghost_gb)
 ghost_edge_list = gfo.edge_list(ghost_gb)
 ghost_frac_edge_list = gfo.fracture_edge_list(ghost_gb)
 
-# Uncomment to export grid
-# export_mesh = pp.Exporter(ghost_gb, file_name="juntion_grid", folder_name="out")
-# export_mesh.write_vtu(ghost_gb)
-
 # %% Time parameters
-schedule = list(np.linspace(0, 900, 100))
+schedule = list(np.linspace(0, 1130, 100))
 tsc = pp.TimeSteppingControl(
     schedule=schedule,
     dt_init=0.1,
@@ -70,13 +65,13 @@ times = [tsc.time]
 dts = [tsc.dt]
 export_counter: int = 0
 
-# %% Assign parameters
+# %% Assign model parameters
 # Keywords
 param_key: str = "flow"
 node_var: str = "hydraulic_head"
 edge_var: str = "mortar_flux"
 
-# Declare primary variables
+# Primary variables
 for _, d in gb:
     d[pp.PRIMARY_VARIABLES] = {node_var: {"cells": 1}}
 for _, d in gb.edges():
@@ -85,13 +80,11 @@ for _, d in gb.edges():
 # Parameter assignment
 param_update = mdu.ParameterUpdate(gb, param_key)  # object to update parameters
 
-K_SAT = 0.00922
-
 for g, d in gb:
 
     # Set parameters for the bulk
     if g.dim == gb.dim_max():
-        # For convinience, store values of bounding box
+        # For convenience, store values of bounding box
         x_min: float = gb.bounding_box()[0][0]
         y_min: float = gb.bounding_box()[0][1]
         x_max: float = gb.bounding_box()[1][0]
@@ -111,12 +104,15 @@ for g, d in gb:
         cells_right: np.ndarray = np.where(np.abs(cc[0] > (x_max / 2)))[0]
 
         # Cell indices corresponding to the blocking fractures
-        blocking_idx: list = [
-            cc[1] < (0.80 * y_max),
-            cc[1] > (0.70 * y_max),
-        ]
-        mult_cond: bool = np.logical_and(blocking_idx[0], blocking_idx[1])
-        blocking_cells: np.ndarray = np.where(mult_cond)[0]
+        top_cc_idx = np.logical_and(
+            cc[1] < (1.00 * y_max), cc[1] > (0.80 * y_max)
+        )
+        mid_cc_idx = np.logical_and(
+            cc[1] < (0.80 * y_max), cc[1] > (0.70 * y_max)
+        )
+        bot_cc_idx = np.logical_and(
+            cc[1] < (0.70 * y_max), cc[1] > (0.00 * y_max)
+        )
 
         # Boundary conditions
         bc_faces = g.get_boundary_faces()
@@ -125,30 +121,71 @@ for g, d in gb:
         bc_values = np.zeros(g.num_faces)
         bc_values[top] = -0.05
 
-        # Saturatted hydraulic conductivity
-        bulk_perm = K_SAT * np.ones(g.num_cells)  # conductive bulk cells
-        bulk_perm[mult_cond] = 5.55E-11  # hydraulic conductivity of blocking cells
+        # Saturated hydraulic conductivity
+        K_SAT = np.ones(g.num_cells)
+        K_SAT_TOP_LAYER = soil_catalog["sandy_loam"].K_s / 3600  # [cm/s]
+        K_SAT_MID_LAYER = soil_catalog["sandy_clay_loam"].K_s / 3600  # [cm/s]
+        K_SAT_BOT_LAYER = soil_catalog["loamy_sand"].K_s / 3600  # [cm/s]
+        K_SAT[top_cc_idx] = K_SAT_TOP_LAYER
+        K_SAT[mid_cc_idx] = K_SAT_MID_LAYER
+        K_SAT[bot_cc_idx] = K_SAT_BOT_LAYER
+
+        # Residual water content
+        THETA_R = np.ones(g.num_cells)
+        THETA_R_TOP_LAYER = soil_catalog["sandy_loam"].theta_r  # [-]
+        THETA_R_MID_LAYER = soil_catalog["sandy_clay_loam"].theta_r  # [-]
+        THETA_R_BOT_LAYER = soil_catalog["loamy_sand"].theta_r  # [-]
+        THETA_R[top_cc_idx] = THETA_R_TOP_LAYER
+        THETA_R[mid_cc_idx] = THETA_R_MID_LAYER
+        THETA_R[bot_cc_idx] = THETA_R_BOT_LAYER
+
+        # Saturated water content
+        THETA_S = np.ones(g.num_cells)
+        THETA_S_TOP_LAYER = soil_catalog["sandy_loam"].theta_sat  # [-]
+        THETA_S_MID_LAYER = soil_catalog["sandy_clay_loam"].theta_sat  # [-]
+        THETA_S_BOT_LAYER = soil_catalog["loamy_sand"].theta_sat  # [-]
+        THETA_S[top_cc_idx] = THETA_S_TOP_LAYER
+        THETA_S[mid_cc_idx] = THETA_S_MID_LAYER
+        THETA_S[bot_cc_idx] = THETA_S_BOT_LAYER
+
+        # alpha vanGenuchten parameter
+        ALPHA_VG = np.ones(g.num_cells)
+        ALPHA_VG_TOP_LAYER = soil_catalog["sandy_loam"].alpha  # [1/cm]
+        ALPHA_VG_MID_LAYER = soil_catalog["sandy_clay_loam"].alpha  # [1/cm]
+        ALPHA_VG_BOT_LAYER = soil_catalog["loamy_sand"].alpha  # [1/cm]
+        ALPHA_VG[top_cc_idx] = ALPHA_VG_TOP_LAYER
+        ALPHA_VG[mid_cc_idx] = ALPHA_VG_MID_LAYER
+        ALPHA_VG[bot_cc_idx] = ALPHA_VG_BOT_LAYER
+
+        # n vanGenuchten parameter
+        N_VG = np.ones(g.num_cells)
+        N_VG_TOP_LAYER = soil_catalog["sandy_loam"].n  # [-]
+        N_VG_MID_LAYER = soil_catalog["sandy_clay_loam"].n  # [-]
+        N_VG_BOT_LAYER = soil_catalog["loamy_sand"].n  # [-]
+        N_VG[top_cc_idx] = N_VG_TOP_LAYER
+        N_VG[mid_cc_idx] = N_VG_MID_LAYER
+        N_VG[bot_cc_idx] = N_VG_BOT_LAYER
 
         # Initialize bulk data
         specified_parameters: dict = {
-            "second_order_tensor": pp.SecondOrderTensor(bulk_perm),  # [cm/s]
+            "second_order_tensor": pp.SecondOrderTensor(K_SAT),  # [cm/s]
             "bc": bc,
             "bc_values": bc_values,
             "source": np.zeros(g.num_cells),
             "elevation": g.cell_centers[gb.dim_max() - 1],
             "mass_weight": np.ones(g.num_cells),
-            "theta_r": 0.102,  # residual water content [-]
-            "theta_s": 0.368,  # saturated water content [-]
-            "alpha_vG": 0.0335,  # van Genuchten parameter [1/cm]
-            "n_vG": 2.0,  # van Genuchten parameter [-]
-            "m_vG": 0.5,  # (1 - 1 / n_vG) van Genuchten parameter [-]
-            "time_step": tsc.dt,  # [s]
+            "theta_r": THETA_R,
+            "theta_s": THETA_S,
+            "alpha_vG": ALPHA_VG,
+            "n_vG": N_VG,
+            "m_vG": 1 - N_VG ** (-1),
+            "time_step": tsc.dt,
         }
 
     # Set parameters for 1D fractures
     elif g.dim == gb.dim_max() - 1:
-        # Note that boundary values are not effectively used, but for discretization purposes
-        # we still have to declare the fields
+        # Note that boundary values are not effectively used, but for discretization
+        # purposes, we still have to declare the fields
         bc_faces = g.get_boundary_faces()
         bc_type = bc_faces.size * ["neu"]
         bc = pp.BoundaryCondition(g, faces=bc_faces, cond=bc_type)
@@ -160,7 +197,8 @@ for g, d in gb:
             "bc_values": np.zeros(g.num_faces),
             "datum": np.min(g.face_centers[gb.dim_max() - 1]),
             "elevation": g.cell_centers[gb.dim_max() - 1],
-            "second_order_tensor": pp.SecondOrderTensor(np.ones(g.num_cells))
+            "second_order_tensor": pp.SecondOrderTensor(np.ones(g.num_cells)),
+            "pressure_threshold": 0,
         }
         pp.initialize_data(g, d, param_key, specified_parameters)
 
@@ -172,12 +210,13 @@ for g, d in gb:
             "aperture": 0.02,
             "datum": np.min(g.cell_centers[gb.dim_max() - 1]),
             "elevation": g.cell_centers[gb.dim_max() - 1],
-            "second_order_tensor": pp.SecondOrderTensor(np.ones(g.num_cells))
+            "second_order_tensor": pp.SecondOrderTensor(np.ones(g.num_cells)),
+            "pressure_threshold": 0,
         }
 
     pp.initialize_data(g, d, param_key, specified_parameters)
 
-# Parameters for the mortar
+# Parameters for the mortar grids
 for e, d in gb.edges():
     mg = d["mortar_grid"]
     ones = np.ones(mg.num_cells)
@@ -185,30 +224,33 @@ for e, d in gb.edges():
     g_sec, _ = gb.nodes_of_edge(e)
     d_sec = gb.node_props(g_sec)
     aperture = d_sec[pp.PARAMETERS][param_key]["aperture"]
-    sat_normal_diffusivity = (K_SAT / (2 * aperture)) * ones  # [1/s]
+    sat_normal_conductivity = bulk_cc_var_to_mortar_grid(gb, K_SAT, [e])
+    normal_diffusivity = 2 * sat_normal_conductivity / aperture  # [1/s]
     is_conductive = zeros
     if mg.dim == gb.dim_max() - 1:
         data = {
-            "sat_normal_diffusivity": sat_normal_diffusivity,
-            "normal_diffusivity": sat_normal_diffusivity,
+            "normal_diffusivity": normal_diffusivity,
             "is_conductive": is_conductive,
             "elevation": mg.cell_centers[gb.dim_max() - 1],
+            "pressure_threshold": zeros,
         }
-    else:
+    else:  # 0-dimensional are not effectively used, since we used a reduced geometry
         data = {
             "sat_normal_diffusivity": 0,
             "normal_diffusivity": 0,
             "is_conductive": is_conductive,
             "elevation": mg.cell_centers[gb.dim_max() - 1],
+            "pressure_threshold": zeros,
         }
     pp.initialize_data(mg, d, param_key, data)
 
 # %% Set initial states
+#
 for g, d in gb:
     if g.dim == gb.dim_max():
         top_cells = g.cell_centers[1] > 80
         h0 = -500 + d[pp.PARAMETERS][param_key]["elevation"]
-        h0[top_cells] = -20 + d[pp.PARAMETERS][param_key]["elevation"][top_cells]
+        h0[top_cells] = -5 + d[pp.PARAMETERS][param_key]["elevation"][top_cells]
         pp.set_state(d, state={node_var: h0})
         pp.set_iterate(d, iterate={node_var: d[pp.STATE][node_var]})
     else:
@@ -236,7 +278,10 @@ lmbda_n = lmbda.previous_timestep()
 
 # Useful auxiliary variables
 zeta = pp.ad.ParameterArray(
-    param_keyword=param_key, array_keyword="elevation", grids=grid_list, name="elevation"
+    param_keyword=param_key,
+    array_keyword="elevation",
+    grids=grid_list,
+    name="elevation",
 )
 psi = h - zeta  # pressure head ad
 psi_m = h_m - zeta  # pressure head previous iteration
@@ -249,7 +294,11 @@ div_bulk = pp.ad.Divergence(grids=bulk_list)
 bound_bulk = pp.ad.BoundaryCondition(param_key, grids=bulk_list)
 
 proj = pp.ad.MortarProjections(gb=gb, grids=grid_list, edges=edge_list)
-ghost_proj = pp.ad.MortarProjections(gb=ghost_gb, grids=ghost_grid_list, edges=ghost_edge_list)
+ghost_proj = pp.ad.MortarProjections(
+    gb=ghost_gb,
+    grids=ghost_grid_list,
+    edges=ghost_edge_list,
+)
 
 subdomain_proj_scalar = pp.ad.SubdomainProjections(grids=grid_list)
 bulk_cell_rest: pp.ad.Matrix = subdomain_proj_scalar.cell_restriction(bulk_list)
@@ -258,13 +307,13 @@ bulk_face_prol: pp.ad.Matrix = subdomain_proj_scalar.face_prolongation(bulk_list
 frac_cell_rest: pp.ad.Matrix = subdomain_proj_scalar.cell_restriction(lfn_list)
 frac_cell_prol: pp.ad.Matrix = subdomain_proj_scalar.cell_prolongation(lfn_list)
 
-h_bulk = bulk_cell_rest * h
-h_lfn = frac_cell_rest * h
+h_bulk = bulk_cell_rest * h  # bulk hydraulic head
+h_lfn = frac_cell_rest * h  # hydraulic heads in the local fracture network
 
 # %% Governing equations in the bulk
 
 # Soil water retention curves
-vgm = mdu.VanGenuchtenMualem(gb=gb, param_key=param_key)
+vgm = mdu.VanGenuchtenMualem(gb=gb, param_key=param_key, dof_manager=dof_manager)
 theta_ad: pp.ad.Function = vgm.water_content(as_ad=True)
 krw_ad: pp.ad.Function = vgm.relative_permeability(as_ad=True)
 smc_ad: pp.ad.Function = vgm.moisture_capacity(as_ad=True)
@@ -370,13 +419,20 @@ sources_from_mortar = frac_cell_rest * proj.mortar_to_secondary_int * lmbda
 # Accumulation terms
 accum_frac = accum_frac_active + accum_frac_inactive
 # Declare conservation equation
-conserv_frac_eq = accum_frac - dt_ad * sources_from_mortar
+conserv_frac_eq = accum_frac - 0.5 * dt_ad * sources_from_mortar
 conserv_frac_eq.discretize(gb=gb)
 conserv_frac_num_new = conserv_frac_eq.evaluate(dof_manager=dof_manager).val
 
 # %% Governing equations on the interfaces
 mpfa_global = pp.ad.MpfaAd(param_key, grid_list)
 robin = pp.ad.RobinCouplingAd(param_key, edge_list)
+
+proj_tr_psi_l = pp.ad.ParameterArray(
+    param_keyword=param_key,
+    array_keyword="pressure_threshold",
+    edges=edge_list,
+    name="interface pressure threshold",
+)
 
 # Get projected higher-dimensional trace of the hydraulic head onto the mortars
 proj_h_high = (
@@ -499,9 +555,14 @@ exporter_ghost.write_vtu([node_var, "pressure_head"], time_step=0)
 # %% Time loop
 total_iteration_counter = 0
 iters = []
-ABS_TOL = 1E-6
+ABS_TOL = 1E-3
 is_mortar_conductive = np.zeros(gb.num_mortar_cells(), dtype=np.int8)
 control_faces = is_mortar_conductive
+scheduled_time = tsc.schedule[1]
+
+water_top = [0]
+water_left = [0]
+water_right = [0]
 
 # Time loop
 while tsc.time < tsc.time_final:
@@ -509,13 +570,13 @@ while tsc.time < tsc.time_final:
     itr: int = 0
     res_norm: float = 1E8
     rel_res: float = 1E8
-    print(f"Time: {tsc.time}")
+    print(f"Time: {np.round(tsc.time, 2)}")
 
     # Solver loop
     while itr <= tsc.iter_max and not res_norm < ABS_TOL:
         # Solve system of equations and distribute variables to pp.ITERATE
         A, b = equation_manager.assemble()
-        solution = spla.spsolve(A, b)
+        solution = spla.spsolve(A, b, use_umfpack=True)
         dof_manager.distribute_variable(solution, additive=True, to_iterate=True)
 
         # Compute 'error' as norm of the residual
@@ -525,8 +586,6 @@ while tsc.time < tsc.time_final:
         else:
             inti_res_norm = max(res_norm, init_res_norm)
         rel_res = res_norm / init_res_norm
-        # Uncomment to print solver info
-        # print("t", tsc.time, "itr", itr, "res", res_norm, "rel_res", rel_res, "dt", tsc.dt)
 
         # Prepare next iteration
         itr += 1
@@ -552,14 +611,10 @@ while tsc.time < tsc.time_final:
 
     # Recompute solution is capillary barrier is overcome. Note that dt remains the same
     is_mortar_conductive = get_conductive_mortars(
-        gb, dof_manager, param_key, proj_h_high, proj_h_low, edge_list
+        gb, dof_manager, param_key, proj_h_high, proj_h_low, proj_tr_psi_l, edge_list
     )
     if control_faces.sum() == 0 and is_mortar_conductive.sum() > 0:
         param_update.update_mortar_conductivity_state(is_mortar_conductive, edge_list)
-        # print(
-        #     f"The faces {np.where(is_mortar_conductive)[0]} are saturated. "
-        #     f"Solution will be recomputed."
-        # )
         print("Encountered saturated mortar cells. Solution will be updated.")
         control_faces = is_mortar_conductive
         set_iterate_as_state(gb, node_var, edge_var)
@@ -583,6 +638,7 @@ while tsc.time < tsc.time_final:
     sin_t = 1
     sin_l = 0.7071067811865475
     sin_r = 0.9486832980505138
+
     # Left and right fractures can receive water
     if (vol_lmax - vol_l) > vol_t/2 and (vol_rmax - vol_r) > vol_t/2:
         vol_l = vol_l + vol_t/2
@@ -592,29 +648,48 @@ while tsc.time < tsc.time_final:
         d_top[pp.STATE][pp.ITERATE][node_var] = (vol_t / 0.1) * sin_t + 50
         d_left[pp.STATE][pp.ITERATE][node_var] = (vol_l / 0.1) * sin_l + 20
         d_right[pp.STATE][pp.ITERATE][node_var] = (vol_r / 0.1) * sin_r + 20
-    # Left and right cannot longer receive water
-    elif np.abs(vol_lmax - vol_l) <= 1e-5 and np.abs(vol_rmax - vol_r) <= 1e-5:
-        vol_top = vol_t
-        vol_left = vol_lmax
-        vol_right = vol_rmax
+        #print("L and R are being filled.")
+
+    # Right will be filled by and the rest is poured into left
+    elif vol_t/2 > (vol_rmax - vol_r):
+        vol_to_fill_right = vol_rmax - vol_r
+        vol_r = vol_rmax
+        residual_vol = vol_t - vol_to_fill_right
+        if (vol_lmax - vol_l) > residual_vol:
+            vol_l = vol_l + residual_vol
+            vol_t = 0
+        else:
+            vol_to_fill_left = vol_lmax - vol_l
+            vol_l = vol_lmax
+            residual_vol = residual_vol - vol_to_fill_left
+            vol_t = residual_vol
+            if vol_t > vol_tmax:
+                vol_t = vol_tmax
         # Correct values of hydraulic head after redistribution
-        d_top[pp.STATE][pp.ITERATE][node_var] = (vol_t / 0.1) * sin_t + 50
-        d_left[pp.STATE][pp.ITERATE][node_var] = (vol_l / 0.1) * sin_l + 20
-        d_right[pp.STATE][pp.ITERATE][node_var] = (vol_r / 0.1) * sin_r + 20
-    else:
-        pass
+        if vol_t <= vol_tmax:
+            d_top[pp.STATE][pp.ITERATE][node_var] = (vol_t / 0.1) * sin_t + 50
+        if vol_l <= vol_lmax:
+            d_left[pp.STATE][pp.ITERATE][node_var] = (vol_l / 0.1) * sin_l + 20
+        if vol_r <= vol_rmax:
+            d_right[pp.STATE][pp.ITERATE][node_var] = (vol_r / 0.1) * sin_r + 20
 
     # Save number of iterations and time step
     iters.append(itr - 1)
     times.append(tsc.time)
     dts.append(tsc.dt)
+    water_left.append(vol_l)
+    water_right.append(vol_r)
+    water_top.append(vol_t)
 
-    # Succesful convergence
+    # Successful convergence
     tsc.next_time_step(recompute_solution=False, iterations=itr - 1)
+    if tsc.time + tsc.dt > scheduled_time:
+        tsc.dt = scheduled_time - tsc.time
+        print("Changing dt to match scheduled time.")
     param_update.update_time_step(tsc.dt)
     set_state_as_iterate(gb, node_var, edge_var)
-    print("Hydraulic heads:", h_lfn.evaluate(dof_manager).val)
-    # print("Volumes:", vol(h_lfn.evaluate(dof_manager).val))
+    #print("Hydraulic heads:", h_lfn.evaluate(dof_manager).val)
+    #print("Volumes:", vol(h_lfn.evaluate(dof_manager).val))
     print()
 
     # # Export to ParaView
@@ -654,3 +729,27 @@ while tsc.time < tsc.time_final:
     if tsc.time in tsc.schedule:
         export_counter += 1
         exporter_ghost.write_vtu([node_var, "pressure_head"], time_step=export_counter)
+        scheduled_time = tsc.schedule[export_counter + 1]
+
+# %% Dump to pickle
+with open("out/water_volume.pickle", "wb") as handle:
+    pickle.dump(
+        [times, water_left, water_right, water_top],
+        handle,
+        protocol=pickle.HIGHEST_PROTOCOL
+    )
+
+
+
+# #%%
+# import matplotlib.pyplot as plt
+#
+# fig, ax = plt.subplots(1, 1)
+# plt.plot(times, water_left, label="Left fracture")
+# plt.plot(times, water_right, label="Right fracture")
+# plt.plot(times, water_top, label="Top fracture")
+# plt.legend()
+# plt.show()
+#
+# #%%
+# pp.plot_grid(bulk_list[0], d_bulk[pp.STATE][node_var], linewidth=None, plot_2d=True)

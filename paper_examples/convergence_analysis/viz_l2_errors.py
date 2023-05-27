@@ -43,9 +43,9 @@ ax[1].plot([], [], linewidth=2, linestyle="-", color="black", label="First order
 ax[0].plot(
     np.log2(1 / np.asarray(mesh_sizes)),
     np.log2(errors["error_h_bulk"]),
-    linewidth=1,
-    linestyle="--",
-    marker="*",
+    linewidth=2,
+    linestyle="-",
+    marker="s",
     markersize="6",
     color="orange",
 )
@@ -53,9 +53,9 @@ ax[0].plot(
 ax[1].plot(
     [],
     [],
-    linewidth=1,
-    linestyle="--",
-    marker="*",
+    linewidth=2,
+    linestyle="-",
+    marker="s",
     markersize="6",
     label="Bulk hydraulic head",
     color="orange",
@@ -65,9 +65,9 @@ ax[1].plot(
 ax[0].plot(
     np.log2(1 / np.asarray(mesh_sizes)),
     np.log2(errors["error_q_intf"]),
-    linewidth=1,
-    linestyle="--",
-    marker="*",
+    linewidth=2,
+    linestyle="-",
+    marker="s",
     markersize="6",
     color="green",
 )
@@ -75,11 +75,11 @@ ax[0].plot(
 ax[1].plot(
     [],
     [],
-    linewidth=1,
-    linestyle="--",
-    marker="*",
+    linewidth=2,
+    linestyle="-",
+    marker="s",
     markersize="6",
-    label="Interface flux",
+    label="Interface fluxes",
     color="green",
 )
 
@@ -87,9 +87,9 @@ ax[1].plot(
 ax[0].plot(
     np.log2(1 / np.asarray(mesh_sizes)),
     np.log2(errors["error_h_frac"]),
-    linewidth=1,
-    linestyle="--",
-    marker="*",
+    linewidth=2,
+    linestyle="-",
+    marker="s",
     markersize="6",
     color="blue",
 )
@@ -97,9 +97,9 @@ ax[0].plot(
 ax[1].plot(
     [],
     [],
-    linewidth=1,
-    linestyle="--",
-    marker="*",
+    linewidth=2,
+    linestyle="-",
+    marker="s",
     markersize="6",
     label="Fracture hydraulic head",
     color="blue",
@@ -109,9 +109,9 @@ ax[1].plot(
 ax[0].plot(
     np.log2(1 / np.asarray(mesh_sizes)),
     np.log2(errors["error_q_bulk"]),
-    linewidth=1,
-    linestyle="--",
-    marker="*",
+    linewidth=2,
+    linestyle="-",
+    marker="s",
     markersize="6",
     color="red",
 )
@@ -119,9 +119,9 @@ ax[0].plot(
 ax[1].plot(
     [],
     [],
-    linewidth=1,
-    linestyle="--",
-    marker="*",
+    linewidth=2,
+    linestyle="-",
+    marker="s",
     markersize="6",
     label="Bulk flux",
     color="red",
@@ -131,9 +131,9 @@ ax[1].plot(
 ax[0].plot(
     np.log2(1 / np.asarray(mesh_sizes)),
     np.log2(errors["error_vol_frac"]),
-    linewidth=1,
-    linestyle="--",
-    marker="*",
+    linewidth=2,
+    linestyle="-",
+    marker="s",
     markersize="6",
     color="magenta",
 )
@@ -141,17 +141,19 @@ ax[0].plot(
 ax[1].plot(
     [],
     [],
-    linewidth=1,
-    linestyle="--",
-    marker="*",
+    linewidth=2,
+    linestyle="-",
+    marker="s",
     markersize="6",
     label="Fracture volume",
     color="magenta",
 )
 
-ax[0].set_xlabel(r"$\log_2\left(1/\mathrm{mesh~size}\right)$", fontsize=15)
-ax[0].set_ylabel(r"$\log_2\left(||\mathrm{error}||_{L^2}\right)$", fontsize=15)
-ax[1].legend(fontsize=13, loc="center")
+ax[0].set_xlabel(r"$\log_2\left(1/\mathrm{mesh~size}\right)$", fontsize=16)
+ax[0].set_ylabel(r"$\log_2\left(\mathrm{error}\right)$", fontsize=16)
+ax[1].legend(fontsize=14, loc="center")
 ax[1].axis("off")
+
+plt.tight_layout()
 
 plt.savefig("out/convergence_analysis.pdf")

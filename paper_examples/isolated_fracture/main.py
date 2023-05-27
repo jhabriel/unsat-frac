@@ -555,7 +555,6 @@ while tsc.time < tsc.time_final:
         set_iterate_as_state(gb, node_var, edge_var)
         continue
 
-
     # Recompute solution is capillary barrier is overcome. Note that dt remains the same
     is_mortar_conductive = get_conductive_mortars(
         gb,

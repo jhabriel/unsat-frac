@@ -102,7 +102,7 @@ class GhostHydraulicHead:
         # Concatenate the representative pressure thresholds for each fracture
         self._psi_l: np.ndarray = np.asarray([
             d[pp.PARAMETERS]["flow"]["pressure_threshold"] for g, d in self._gb if
-            g.dim == self._gb.dim_max() - 1
+            g.dim < self._gb.dim_max()
         ])
 
     def __repr__(self) -> str:

@@ -8,7 +8,7 @@ import porepy as pp
 import numpy as np
 import scipy.sparse as sps
 
-from typing import Tuple, List, Union
+from typing import Tuple, List, Union, Optional
 
 from porepy.numerics.ad.operators import ApplicableOperator
 from porepy.numerics.ad.functions import heaviside
@@ -23,13 +23,14 @@ Edge = Tuple[pp.Grid, pp.Grid]
 def bulk_cc_var_to_mortar_grid(
         gb: pp.GridBucket,
         cc_var: np.ndarray,
+        edge_list: Optional[list[tuple[pp.Grid, pp.Grid]]] = None,
 ) -> np.ndarray:
     """Projects a cell centered quantity from the bulk onto the mortar grids."
 
     Parameters:
         gb: ...
-        dof_manager: ...
         cc_var: ...
+        edge_list: ...
 
     Returns:
         Projected variable onto the mortar grids.
@@ -42,7 +43,8 @@ def bulk_cc_var_to_mortar_grid(
     cell_1 = g_bulk.cell_face_as_dense()[1][frac_faces]
     cells = cell_0 * (cell_0 > 1) + cell_1 * (cell_1 > 1)
     grid_list = [g for g, _ in gb]
-    edge_list = [e for e, _ in gb.edges()]
+    if edge_list is None:
+        edge_list = [e for e, _ in gb.edges()]
     mortar_proj = pp.ad.MortarProjections(gb=gb, grids=grid_list, edges=edge_list)
     sd_proj = pp.ad.SubdomainProjections(grids=grid_list)
     bulk_face_prol = sd_proj.face_prolongation([g_bulk])
