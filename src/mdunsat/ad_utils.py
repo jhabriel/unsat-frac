@@ -6,8 +6,12 @@ Author: @jv
 # %% Importing modules
 import porepy as pp
 import numpy as np
+import scipy.sparse as sps
 
-from typing import Tuple, List, Union
+from typing import Tuple, List, Union, Optional
+
+from porepy.numerics.ad.operators import ApplicableOperator
+from porepy.numerics.ad.functions import heaviside
 
 # Typing abbreviations
 Scalar = Union[int, float]
@@ -16,53 +20,114 @@ NonAd = Union[Scalar, np.ndarray]
 Edge = Tuple[pp.Grid, pp.Grid]
 
 
+def bulk_cc_var_to_mortar_grid(
+        gb: pp.GridBucket,
+        cc_var: np.ndarray,
+        edge_list: Optional[list[tuple[pp.Grid, pp.Grid]]] = None,
+) -> np.ndarray:
+    """Projects a cell centered quantity from the bulk onto the mortar grids."
+
+    Parameters:
+        gb: ...
+        cc_var: ...
+        edge_list: ...
+
+    Returns:
+        Projected variable onto the mortar grids.
+
+    """
+    g_bulk = gb.grids_of_dimension(gb.dim_max())[0]
+    assert cc_var.size == g_bulk.num_cells
+    frac_faces = g_bulk.tags["fracture_faces"]
+    cell_0 = g_bulk.cell_face_as_dense()[0][frac_faces]
+    cell_1 = g_bulk.cell_face_as_dense()[1][frac_faces]
+    cells = cell_0 * (cell_0 > 1) + cell_1 * (cell_1 > 1)
+    grid_list = [g for g, _ in gb]
+    if edge_list is None:
+        edge_list = [e for e, _ in gb.edges()]
+    mortar_proj = pp.ad.MortarProjections(gb=gb, grids=grid_list, edges=edge_list)
+    sd_proj = pp.ad.SubdomainProjections(grids=grid_list)
+    bulk_face_prol = sd_proj.face_prolongation([g_bulk])
+
+    fc_var = np.zeros(g_bulk.num_faces)
+    fc_var[frac_faces] = cc_var[cells]
+    mortar_var = (
+            mortar_proj.primary_to_mortar_avg.parse(gb)
+            * bulk_face_prol.parse(gb)
+            * fc_var
+    )
+
+    return mortar_var
+
+
 def get_conductive_mortars(
     gb: pp.GridBucket,
     dof_manager: pp.DofManager,
     param_key: str,
     proj_tr_hb: pp.ad.Operator,
     proj_hf: pp.ad.Operator,
+    proj_psi_l: pp.ad.ParameterArray,
     edge_list: List[Edge],
 ) -> np.ndarray:
     """
-    Determines the conductivity state of a mortar cell, i.e., conductive (1) or blocking (0).
+    Determines the conductivity state of a mortar cell. Conductive (1) or blocking (0).
 
     Parameters:
         gb (GridBucket): Mixed-dimensional grid bucket
         dof_manager (DofManager): Degree of freedom manager for the coupled problem.
-        param_key (str): Parameter keyword for accesing data dictionary, i.e., flow.
-        proj_tr_hb (pp.ad.Operator): Projected hydraulic head traces from the primary grid
+        param_key (str): Parameter keyword for accessing data dictionary, i.e., flow.
+        proj_tr_hb (pp.ad.Operator): Projected hydraulic head traces from the primary
+            grid onto the mortar grids.
+        proj_hf (pp.ad.Operator): Projected hydraulic head from the secondary grid onto
+            the mortar grids.
+        proj_psi_l (pp.ad.ParameterArray): Projected capillary pressure threshold
             onto the mortar grids.
-        proj_hf (pp.ad.Operator): Projected hydraulic head from the secondary grid onto the
-            mortar grids.
-        edge_list (List of Edges): List of edges. It is critical the ordering of the edges
-            to be respected.
+        edge_list (List of Edges): List of edges. It is critical the ordering of the
+            edges to be respected.
 
     Returns:
         is_conductive (np.ndarray of bools): True if is conductive, False if is blocking.
 
     """
-    is_conductive = np.zeros(gb.num_mortar_cells(), dtype=np.int8)
+    # All mortar cells are non-conductive at the beginning of each time step
+    is_conductive = np.zeros(gb.num_mortar_cells(), dtype=np.int32)
+
+    # Retrieve the elevations
     zeta = pp.ad.ParameterArray(param_key, "elevation", edges=edge_list).parse(gb)
 
     # Evaluate operators
+    tr_psi_l = proj_psi_l.parse(gb)
+
     proj_tr_hb.discretize(gb=gb)
-    tr_hb = proj_tr_hb.evaluate(dof_manager)
+    tr_hb = proj_tr_hb.evaluate(dof_manager).val
 
     proj_hf.discretize(gb=gb)
-    hf = proj_hf.evaluate(dof_manager)
+    hf = proj_hf.evaluate(dof_manager).val
 
-    # TODO: This loop can be optimized... I'm just too lazy to vectorise it <3
-    # If pressure in the fracture is greater than the pressure threshold, promote the mortar
-    # cell to be conductive. This is the first condition that we have to check. Otherwise,
-    # check if the pressure trace is greater (or equal) than the pressure threshold,
-    # if that is the case also promote that cell to conductive.
-    for mortar_cell in range(0, tr_hb.val.size):
-        if hf.val[mortar_cell] - zeta[mortar_cell] > 0:
-            is_conductive[mortar_cell] = 1
-        else:
-            if tr_hb.val[mortar_cell] - zeta[mortar_cell] > 0:
-                is_conductive[mortar_cell] = 1
+    # TODO: This loop can be optimized... I'm just too lazy to vectorise it.
+
+    # If pressure in the fracture is greater than the pressure threshold, promote the
+    # mortar cell to conductive. This is the first condition that we have to check.
+    # Otherwise, check if the pressure trace is greater (or equal) than the pressure
+    # threshold, if that is the case also promote that cell to conductive.
+    # This essentially solves the gamma Heaviside function (from the paper) on the
+    # interfaces.
+    tol = 0  # [cm]
+
+    # Case 1
+    conductive_cells = (hf - zeta > tr_psi_l + tol) + (tr_hb - zeta > tr_psi_l + tol)
+    is_conductive[conductive_cells] = 1
+
+    # # Case 2
+    # conductive_cells = (tr_hb - zeta > tr_psi_l + tol)
+    # is
+    #
+    # for mortar_cell in range(0, tr_hb.val.size):
+    #     if hf.val[mortar_cell] - zeta[mortar_cell] > tr_psi_l[mortar_cell] + tol:
+    #         is_conductive[mortar_cell] = 1
+    #     else:
+    #         if tr_hb.val[mortar_cell] - zeta[mortar_cell] > tr_psi_l[mortar_cell] + tol:
+    #             is_conductive[mortar_cell] = 1
 
     return is_conductive
 
@@ -160,7 +225,7 @@ class ParameterUpdate:
             d = self._gb.edge_props(e)
             d[pp.PARAMETERS][self._param_key]["normal_diffusivity"] = (
                 is_mortar_conductive
-                * d[pp.PARAMETERS][self._param_key]["sat_normal_diffusivity"]
+                * d[pp.PARAMETERS][self._param_key]["normal_diffusivity"]
             )
 
     def update_mortar_conductivity_state(
@@ -181,7 +246,7 @@ class ParameterUpdate:
         cum_sum = list(np.cumsum(num_mortar_cells))
         cum_sum.insert(0, 0)
 
-        # Loop and replace the paramater "is_conductive" on each mortar grid
+        # Loop and replace the parameter "is_conductive" on each mortar grid
         for idx, e in enumerate(edges_list):
             d = self._gb.edge_props(e)
             base = cum_sum[idx]
@@ -301,65 +366,3 @@ class ParameterUpdate:
 #             ghost_h_frac[dry_cells] = self._cc[dry_cells]
 #
 #         return ghost_h_frac
-#
-#
-# # %% INTERFACE UPSTREAM WEIGHTING
-# class InterfaceUpwindAd(ApplicableOperator):
-#     """
-#     Computes the interface relative permeabilities based on the (projected)
-#     pressure jump associated with the bulk and fractur potentials.
-#     """
-#
-#     def __init__(self):
-#
-#         self._set_tree()
-#
-#     def __repr__(self) -> str:
-#         return "Interface upwind AD operator"
-#
-#     # TODO: Add sanity check to check if input matches amount of mortar cells in gb
-#     # TODO: Write tests
-#     def apply(self, trace_p_bulk, krw_trace_p_bulk, p_frac, krw_p_frac):
-#         """
-#         Apply method for upwinding of interface relative permeabilities.
-#
-#         Parameters
-#         ----------
-#         trace_p_bulk : nd-array of size total_num_of_mortar_cells
-#             Mortar-projected bulk pressure trace
-#         krw_trace_p_bulk : nd-array of size total_num_of_mortar_cells
-#             Mortar-projected relative permeabilities of bulk pressure trace.
-#         p_frac : nd-array of size total_num_of_mortar_cells
-#             Mortar-projected fracture pressures.
-#         krw_p_frac : nd-array of size total_num_of_mortar_cells
-#             Mortar-projected relative permeabilites of fracture presure
-#
-#         Raises
-#         ------
-#         TypeError
-#             If one of the input arguments is an Ad Array
-#
-#         Returns
-#         -------
-#         interface_krw : Sparse Matrix of size total_num_mortar_cells ** 2
-#             Diagonal matrix with each entry representing the value of
-#             the relative permeability associated with the mortar cell
-#         """
-#
-#         # Sanity check of input type
-#         if (
-#             isinstance(trace_p_bulk, pp.ad.Ad_array)
-#             or isinstance(krw_trace_p_bulk, pp.ad.Ad_array)
-#             or isinstance(p_frac, pp.ad.Ad_array)
-#             or isinstance(krw_p_frac, pp.ad.Ad_array)
-#         ):
-#             raise TypeError("Input cannot be of type Ad array")
-#         else:
-#             pressure_jump = trace_p_bulk - p_frac
-#             hs_10 = heaviside(pressure_jump, zerovalue=0)
-#             hs_01 = heaviside(-pressure_jump, zerovalue=0)
-#             vals = hs_10 * krw_trace_p_bulk + hs_01 * krw_p_frac
-#             n = len(trace_p_bulk)
-#             interface_krw = sps.spdiags(vals, 0, n, n)
-#
-#         return interface_krw

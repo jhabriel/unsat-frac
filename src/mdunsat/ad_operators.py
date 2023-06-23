@@ -6,6 +6,7 @@ import porepy as pp
 import numpy as np
 import scipy.sparse as sps
 from porepy.numerics.ad.operators import Operator, ApplicableOperator
+from porepy.numerics.ad.functions import heaviside
 from typing import Callable, Optional, Tuple, List, Any, Union, NewType, Literal
 
 # Typing abbreviations
@@ -14,7 +15,7 @@ AdArray = pp.ad.Ad_array
 NonAd = Union[Scalar, np.ndarray]
 Edge = Tuple[pp.Grid, pp.Grid]
 
-__all__ = ["FluxBaseUpwindAd", "ParameterScalar"]
+__all__ = ["FluxBaseUpwindAd", "InterfaceUpwindAd", "ParameterScalar"]
 
 
 class FluxBaseUpwindAd(ApplicableOperator):
@@ -137,6 +138,66 @@ class FluxBaseUpwindAd(ApplicableOperator):
 
         return sps.spdiags(face_upwind, 0, self._g.num_faces, self._g.num_faces)
 
+
+class InterfaceUpwindAd(ApplicableOperator):
+    """
+    Computes the interface relative permeabilities based on the (projected)
+    pressure jump associated with the bulk and fracture pressure heads.
+    """
+
+    def __init__(self):
+
+        self._set_tree()
+
+    def __repr__(self) -> str:
+        return "Interface upwind AD operator"
+
+    # TODO: Add sanity check to check if input matches amount of mortar cells in gb
+    # TODO: Write tests
+    def apply(self, trace_p_bulk, krw_trace_p_bulk, p_frac, krw_p_frac):
+        """
+        Apply method for upwinding of interface relative permeabilities.
+
+        Parameters
+        ----------
+        trace_p_bulk : nd-array of size total_num_of_mortar_cells
+            Mortar-projected bulk pressure trace
+        krw_trace_p_bulk : nd-array of size total_num_of_mortar_cells
+            Mortar-projected relative permeabilities of bulk pressure trace.
+        p_frac : nd-array of size total_num_of_mortar_cells
+            Mortar-projected fracture pressures.
+        krw_p_frac : nd-array of size total_num_of_mortar_cells
+            Mortar-projected relative permeabilites of fracture presure
+
+        Raises
+        ------
+        TypeError
+            If one of the input arguments is an Ad Array
+
+        Returns
+        -------
+        interface_krw : Sparse Matrix of size total_num_mortar_cells ** 2
+            Diagonal matrix with each entry representing the value of
+            the relative permeability associated with the mortar cell
+        """
+
+        # Sanity check of input type
+        if (
+            isinstance(trace_p_bulk, pp.ad.Ad_array)
+            or isinstance(krw_trace_p_bulk, pp.ad.Ad_array)
+            or isinstance(p_frac, pp.ad.Ad_array)
+            or isinstance(krw_p_frac, pp.ad.Ad_array)
+        ):
+            raise TypeError("Input cannot be of type Ad array")
+        else:
+            pressure_jump = trace_p_bulk - p_frac
+            hs_10 = heaviside(pressure_jump, zerovalue=0)
+            hs_01 = heaviside(-pressure_jump, zerovalue=0)
+            vals = hs_10 * krw_trace_p_bulk + hs_01 * krw_p_frac
+            n = len(trace_p_bulk)
+            interface_krw = sps.spdiags(vals, 0, n, n)
+
+        return interface_krw
 
 class ParameterScalar(Operator):
     """Extracts a scalar from the parameter dictionary for a given grid or edge
