@@ -458,102 +458,56 @@ exporter.write_vtu([node_var], time_step=export_counter)
 # %% Time loop
 total_iteration_counter: int = 0
 iters: list = []
-abs_tol: float = 1e-10
+ABS_TOL: float = 1e-3
 is_mortar_conductive: np.ndarray = np.zeros(gb.num_mortar_cells(), dtype=np.int8)
 control_faces: np.ndarray = is_mortar_conductive
 scheduled_time = tsc.schedule[1]
 
-abs_tol_head = 1  # [cm]
-abs_tol_intf_flux = 0.001  # [cm^3 / s]
-has_converged = False
-
 # Time loop
 while tsc.time < tsc.time_final:
     tsc.time += tsc.dt
-    iteration_counter: int = 0
-    residual_norm: float = 1.0
-    rel_res: float = 1.0
+    itr: int = 0
+    res_norm: float = 1e8
+    rel_res: float = 1e8
     print(f"Time: {round(tsc.time, 2)}")
 
-    h_bulk_prev_iter = d_bulk[pp.STATE][node_var]
-    h_frac_prev_iter = d_frac[pp.STATE][node_var]
-    lmbda_prev_iter = d_edge[pp.STATE][edge_var]
-    has_converged = False
-
     # Solver loop
-    while iteration_counter <= tsc.iter_max and not has_converged:
+    while itr <= tsc.iter_max and not res_norm < ABS_TOL:
 
         # Solve system of equations and distribute variables to pp.ITERATE
         A, b = equation_manager.assemble()
         solution = spla.spsolve(A, b)
         dof_manager.distribute_variable(solution, additive=True, to_iterate=True)
 
-        # Check convergence
-        h_bulk_error = np.max(
-            np.abs(h_bulk_prev_iter - d_bulk[pp.STATE][pp.ITERATE][node_var])
-        )
-        h_frac_error = np.max(
-            np.abs(h_frac_prev_iter - d_frac[pp.STATE][pp.ITERATE][node_var])
-        )
-        lmbda_error = np.max(
-            np.abs(lmbda_prev_iter - d_edge[pp.STATE][pp.ITERATE][edge_var])
-        )
-
-        if h_bulk_error < abs_tol_head and h_frac_error < abs_tol_head and \
-                lmbda_error < abs_tol_intf_flux:
-            has_converged = True
-        elif h_bulk_error > 1e5:
-            has_converged = False
-            break
-        else:
-            has_converged = False
-
-        h_bulk_prev_iter = d_bulk[pp.STATE][pp.ITERATE][node_var]
-        h_frac_prev_iter = d_frac[pp.STATE][pp.ITERATE][node_var]
-        lmbda_prev_iter = d_edge[pp.STATE][pp.ITERATE][edge_var]
-
         # Compute 'error' as norm of the residual
-        residual_norm = np.linalg.norm(b, 2)
-
-        # Uncomment for full info
-        # print(
-        #     "time",
-        #     tsc.time,
-        #     "iter",
-        #     iteration_counter,
-        #     "res",
-        #     residual_norm,
-        #     "rel_res",
-        #     rel_res,
-        #     "dt",
-        #     tsc.dt,
-        # )
+        res_norm = np.linalg.norm(b, 2)
+        if itr == 0:
+            init_res_norm = res_norm
+        else:
+            inti_res_norm = max(res_norm, init_res_norm)
+        rel_res = res_norm / init_res_norm
 
         # Prepare next iteration
-        iteration_counter += 1
+        itr += 1
         total_iteration_counter += 1
-        # end of iteration loop
+    # end of solver loop
 
-    # # Recompute solution if we did not achieve convergence
-    # if residual_norm > abs_tol or np.isnan(residual_norm):
-    #     tsc.next_time_step(recompute_solution=True, iterations=iteration_counter - 1)
-    #     param_update.update_time_step(tsc.dt)
-    #     set_iterate_as_state(gb, node_var, edge_var)
-    #     continue
-
-    if not has_converged or np.isnan(residual_norm):
-        tsc.next_time_step(recompute_solution=True, iterations=iteration_counter - 1)
+    # Recompute solution if we did not achieve convergence
+    if res_norm > ABS_TOL or np.isnan(res_norm):
+        tsc.next_time_step(recompute_solution=True, iterations=itr - 1)
         param_update.update_time_step(tsc.dt)
         set_iterate_as_state(gb, node_var, edge_var)
         continue
+    # end of checking
 
     # Recompute solution if negative volume is encountered
     if np.any(vol(h_frac.evaluate(dof_manager).val) < 0):
         print(f"Encountered negative volume. Reducing dt and recomputing solution.")
-        tsc.next_time_step(recompute_solution=True, iterations=iteration_counter - 1)
+        tsc.next_time_step(recompute_solution=True, iterations=itr - 1)
         param_update.update_time_step(tsc.dt)
         set_iterate_as_state(gb, node_var, edge_var)
         continue
+    # end of checking
 
     # Recompute solution is capillary barrier is overcome. Note that dt remains the same
     is_mortar_conductive = get_conductive_mortars(
@@ -580,13 +534,13 @@ while tsc.time < tsc.time_final:
         control_faces = is_mortar_conductive
 
     # Save number of iterations and time step
-    iters.append(iteration_counter - 1)
+    iters.append(itr - 1)
     times.append(tsc.time)
     dts.append(tsc.dt)
 
     # Successful convergence
-    print(f"Solution converged in {iteration_counter - 1} iterations.")
-    tsc.next_time_step(recompute_solution=False, iterations=iteration_counter - 1)
+    print(f"Solution converged in {itr - 1} iterations.")
+    tsc.next_time_step(recompute_solution=False, iterations=itr - 1)
     if tsc.time + tsc.dt > scheduled_time:
         tsc.dt = scheduled_time - tsc.time
         print("Changing dt to match scheduled time.")
@@ -601,15 +555,15 @@ while tsc.time < tsc.time_final:
         water_vol.append(vol(d_frac[pp.STATE][node_var])[0])
     set_state_as_iterate(gb, node_var, edge_var)
 
-    # Export
+    # Export if time is in schedule
     if np.isclose(tsc.time, scheduled_time, atol=1e-3):
         export_counter += 1
         exporter.write_vtu([node_var], time_step=export_counter)
         scheduled_time = tsc.schedule[export_counter + 1]
 
-    print(f"Scheduled time is: {scheduled_time}")
-
+    print()
 
 # %% Dump to pickle
 with open("out/water_volume.pickle", "wb") as handle:
     pickle.dump([times, water_vol], handle, protocol=pickle.HIGHEST_PROTOCOL)
+
