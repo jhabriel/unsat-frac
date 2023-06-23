@@ -14,7 +14,7 @@ plt.rcParams.update(
 )
 
 #%% Open pickle file
-with open('out/l2_errors.pickle', 'rb') as handle:
+with open("out/l2_errors.pickle", "rb") as handle:
     input_list = pickle.load(handle)
 
 errors: dict[str, np.ndarray] = input_list[0]

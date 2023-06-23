@@ -200,7 +200,8 @@ for g, d in gb:
         pp.set_iterate(d, iterate={node_var: d[pp.STATE][node_var]})
     else:
         pp.set_state(
-            d, state={node_var: np.array([d[pp.PARAMETERS][param_key]["datum"]])},
+            d,
+            state={node_var: np.array([d[pp.PARAMETERS][param_key]["datum"]])},
         )
         pp.set_iterate(d, iterate={node_var: d[pp.STATE][node_var]})
 
@@ -546,9 +547,8 @@ while tsc.time < tsc.time_final:
         print("Changing dt to match scheduled time.")
     param_update.update_time_step(tsc.dt)
     if (
-            vol(d_frac[pp.STATE][node_var])[0]
-            < frac_list[0].cell_volumes.sum()
-            * d_frac[pp.PARAMETERS][param_key]["aperture"]
+        vol(d_frac[pp.STATE][node_var])[0]
+        < frac_list[0].cell_volumes.sum() * d_frac[pp.PARAMETERS][param_key]["aperture"]
     ):
         water_vol.append(vol(d_frac[pp.STATE][node_var])[0])
     else:
@@ -566,4 +566,3 @@ while tsc.time < tsc.time_final:
 # %% Dump to pickle
 with open("out/water_volume.pickle", "wb") as handle:
     pickle.dump([times, water_vol], handle, protocol=pickle.HIGHEST_PROTOCOL)
-

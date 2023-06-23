@@ -10,7 +10,7 @@ from mdunsat.ad_utils import (
     get_ghost_hydraulic_head,
     set_state_as_iterate,
     set_iterate_as_state,
-    bulk_cc_var_to_mortar_grid
+    bulk_cc_var_to_mortar_grid,
 )
 from mdunsat.soil_catalog import soil_catalog
 
@@ -104,15 +104,9 @@ for g, d in gb:
         cells_right: np.ndarray = np.where(np.abs(cc[0] > (x_max / 2)))[0]
 
         # Cell indices corresponding to the blocking fractures
-        top_cc_idx = np.logical_and(
-            cc[1] < (1.00 * y_max), cc[1] > (0.80 * y_max)
-        )
-        mid_cc_idx = np.logical_and(
-            cc[1] < (0.80 * y_max), cc[1] > (0.70 * y_max)
-        )
-        bot_cc_idx = np.logical_and(
-            cc[1] < (0.70 * y_max), cc[1] > (0.00 * y_max)
-        )
+        top_cc_idx = np.logical_and(cc[1] < (1.00 * y_max), cc[1] > (0.80 * y_max))
+        mid_cc_idx = np.logical_and(cc[1] < (0.80 * y_max), cc[1] > (0.70 * y_max))
+        bot_cc_idx = np.logical_and(cc[1] < (0.70 * y_max), cc[1] > (0.00 * y_max))
 
         # Boundary conditions
         bc_faces = g.get_boundary_faces()
@@ -323,9 +317,9 @@ mpfa_bulk = pp.ad.MpfaAd(param_key, bulk_list)
 
 # Obtain single phase flow to compute directionality of upwind scheme
 flux_single_phase = (
-        mpfa_bulk.flux * bulk_cell_rest * h_m
-        + mpfa_bulk.bound_flux * bound_bulk
-        + mpfa_bulk.bound_flux * bulk_face_rest * proj.mortar_to_primary_int * lmbda_m
+    mpfa_bulk.flux * bulk_cell_rest * h_m
+    + mpfa_bulk.bound_flux * bound_bulk
+    + mpfa_bulk.bound_flux * bulk_face_rest * proj.mortar_to_primary_int * lmbda_m
 )
 
 # Upwinding of relative permeabilities
@@ -340,7 +334,11 @@ krw_faces = upwind(krw_ad(psi_bulk_m), krw_ad(psi_bound_bulk), flux_single_phase
 flux = (
     krw_faces * mpfa_bulk.flux * bulk_cell_rest * h
     + krw_faces * mpfa_bulk.bound_flux * bound_bulk
-    + krw_faces * mpfa_bulk.bound_flux * bulk_face_rest * proj.mortar_to_primary_int * lmbda
+    + krw_faces
+    * mpfa_bulk.bound_flux
+    * bulk_face_rest
+    * proj.mortar_to_primary_int
+    * lmbda
 )
 
 # Treatment of source and accumulation terms
@@ -357,18 +355,20 @@ if linearization == "newton":
     accum_bulk_inactive = mass_bulk.mass * theta_ad(bulk_cell_rest * psi_n) * (-1)
 elif linearization == "modified_picard":
     accum_bulk_active = mass_bulk.mass * (
-            (bulk_cell_rest * psi) * smc_ad(bulk_cell_rest * psi_m)
+        (bulk_cell_rest * psi) * smc_ad(bulk_cell_rest * psi_m)
     )
     accum_bulk_inactive = mass_bulk.mass * (
-            theta_ad(bulk_cell_rest * psi_m) - smc_ad(bulk_cell_rest * psi_m) *
-            (bulk_cell_rest * psi_m) - theta_ad(bulk_cell_rest * psi_n)
+        theta_ad(bulk_cell_rest * psi_m)
+        - smc_ad(bulk_cell_rest * psi_m) * (bulk_cell_rest * psi_m)
+        - theta_ad(bulk_cell_rest * psi_n)
     )
 elif linearization == "l_scheme":
     L = 0.001
     accum_bulk_active = L * mass_bulk.mass * (bulk_cell_rest * psi)
     accum_bulk_inactive = mass_bulk.mass * (
-            theta_ad(bulk_cell_rest * psi_m)
-            - L * (bulk_cell_rest * psi_m) - theta_ad(bulk_cell_rest * psi_n)
+        theta_ad(bulk_cell_rest * psi_m)
+        - L * (bulk_cell_rest * psi_m)
+        - theta_ad(bulk_cell_rest * psi_n)
     )
 else:
     raise NotImplementedError(
@@ -396,17 +396,17 @@ if linearization == "newton":
 elif linearization == "modified_picard":
     accum_frac_active = (frac_cell_rest * h) * vol_cap_ad(frac_cell_rest * h_m)
     accum_frac_inactive = (
-            vol_ad(frac_cell_rest * h_m)
-            - vol_cap_ad(frac_cell_rest * h_m) * (frac_cell_rest * h_m)
-            - vol_ad(frac_cell_rest * h_n)
+        vol_ad(frac_cell_rest * h_m)
+        - vol_cap_ad(frac_cell_rest * h_m) * (frac_cell_rest * h_m)
+        - vol_ad(frac_cell_rest * h_n)
     )
 elif linearization == "l_scheme":
     L = 0.015
     accum_frac_active = L * frac_cell_rest * h
     accum_frac_inactive = (
-            vol_ad(frac_cell_rest * h_m)
-            - L * frac_cell_rest * h_m
-            - vol_ad(frac_cell_rest * h_n)
+        vol_ad(frac_cell_rest * h_m)
+        - L * frac_cell_rest * h_m
+        - vol_ad(frac_cell_rest * h_n)
     )
 else:
     raise NotImplementedError(
@@ -436,19 +436,19 @@ proj_tr_psi_l = pp.ad.ParameterArray(
 
 # Get projected higher-dimensional trace of the hydraulic head onto the mortars
 proj_h_high = (
-        proj.primary_to_mortar_avg * mpfa_global.bound_pressure_cell * h
-        + proj.primary_to_mortar_avg
-        * mpfa_global.bound_pressure_face
-        * proj.mortar_to_primary_int
-        * lmbda
+    proj.primary_to_mortar_avg * mpfa_global.bound_pressure_cell * h
+    + proj.primary_to_mortar_avg
+    * mpfa_global.bound_pressure_face
+    * proj.mortar_to_primary_int
+    * lmbda
 )
 
 proj_h_high_m = (
-        proj.primary_to_mortar_avg * mpfa_global.bound_pressure_cell * h_m
-        + proj.primary_to_mortar_avg
-        * mpfa_global.bound_pressure_face
-        * proj.mortar_to_primary_int
-        * lmbda_m
+    proj.primary_to_mortar_avg * mpfa_global.bound_pressure_cell * h_m
+    + proj.primary_to_mortar_avg
+    * mpfa_global.bound_pressure_face
+    * proj.mortar_to_primary_int
+    * lmbda_m
 )
 
 # Get projected lower-dimensional (ghost) hydraulic head onto the mortars
@@ -467,10 +467,11 @@ interface_flux_eq.discretize(gb=gb)
 interface_flux_num_new = interface_flux_eq.evaluate(dof_manager=dof_manager).val
 
 # %% Assemble discrete equations, feed into the equation manager, and discretize.
-eqs = {"bulk_conservation": conserv_bulk_eq,
-       "fracture_conservation": conserv_frac_eq,
-       "interface_fluxes": interface_flux_eq
-       }
+eqs = {
+    "bulk_conservation": conserv_bulk_eq,
+    "fracture_conservation": conserv_frac_eq,
+    "interface_fluxes": interface_flux_eq,
+}
 equation_manager.equations.update(eqs)
 equation_manager.discretize(gb)
 
@@ -503,9 +504,8 @@ pp.set_state(
     state={
         node_var: d_bulk[pp.STATE][node_var],
         "pressure_head": (
-                d_bulk[pp.STATE][node_var] -
-                d_bulk[pp.PARAMETERS][param_key]["elevation"]
-        )
+            d_bulk[pp.STATE][node_var] - d_bulk[pp.PARAMETERS][param_key]["elevation"]
+        ),
     },
 )
 
@@ -516,7 +516,8 @@ pp.set_state(
         node_var: d_top[pp.PARAMETERS][param_key]["datum"]
         * np.ones(ghost_frac_list[0].num_cells),
         "pressure_head": d_top[pp.PARAMETERS][param_key]["datum"]
-        * np.ones(ghost_frac_list[0].num_cells) - z_top_ghost
+        * np.ones(ghost_frac_list[0].num_cells)
+        - z_top_ghost,
     },
 )
 
@@ -526,7 +527,8 @@ pp.set_state(
         node_var: d_left[pp.PARAMETERS][param_key]["datum"]
         * np.ones(ghost_frac_list[1].num_cells),
         "pressure_head": d_left[pp.PARAMETERS][param_key]["datum"]
-        * np.ones(ghost_frac_list[1].num_cells) - z_left_ghost
+        * np.ones(ghost_frac_list[1].num_cells)
+        - z_left_ghost,
     },
 )
 
@@ -536,18 +538,12 @@ pp.set_state(
         node_var: d_right[pp.PARAMETERS][param_key]["datum"]
         * np.ones(ghost_frac_list[2].num_cells),
         "pressure_head": d_left[pp.PARAMETERS][param_key]["datum"]
-        * np.ones(ghost_frac_list[2].num_cells) - z_right_ghost
+        * np.ones(ghost_frac_list[2].num_cells)
+        - z_right_ghost,
     },
 )
 
-pp.set_state(
-    data=d_point_ghost,
-    state={
-        node_var: 0,
-        "pressure_head": 0
-    }
-
-)
+pp.set_state(data=d_point_ghost, state={node_var: 0, "pressure_head": 0})
 
 exporter_ghost = pp.Exporter(ghost_gb, "junction", "out")
 exporter_ghost.write_vtu([node_var, "pressure_head"], time_step=0)
@@ -555,7 +551,7 @@ exporter_ghost.write_vtu([node_var, "pressure_head"], time_step=0)
 # %% Time loop
 total_iteration_counter = 0
 iters = []
-ABS_TOL = 1E-3
+ABS_TOL = 1e-3
 is_mortar_conductive = np.zeros(gb.num_mortar_cells(), dtype=np.int8)
 control_faces = is_mortar_conductive
 scheduled_time = tsc.schedule[1]
@@ -568,8 +564,8 @@ water_right = [0]
 while tsc.time < tsc.time_final:
     tsc.time += tsc.dt
     itr: int = 0
-    res_norm: float = 1E8
-    rel_res: float = 1E8
+    res_norm: float = 1e8
+    rel_res: float = 1e8
     print(f"Time: {np.round(tsc.time, 2)}")
 
     # Solver loop
@@ -640,9 +636,9 @@ while tsc.time < tsc.time_final:
     sin_r = 0.9486832980505138
 
     # Left and right fractures can receive water
-    if (vol_lmax - vol_l) > vol_t/2 and (vol_rmax - vol_r) > vol_t/2:
-        vol_l = vol_l + vol_t/2
-        vol_r = vol_r + vol_t/2
+    if (vol_lmax - vol_l) > vol_t / 2 and (vol_rmax - vol_r) > vol_t / 2:
+        vol_l = vol_l + vol_t / 2
+        vol_r = vol_r + vol_t / 2
         vol_t = 0
         # Correct values of hydraulic head after redistribution
         d_top[pp.STATE][pp.ITERATE][node_var] = (vol_t / 0.1) * sin_t + 50
@@ -650,7 +646,7 @@ while tsc.time < tsc.time_final:
         d_right[pp.STATE][pp.ITERATE][node_var] = (vol_r / 0.1) * sin_r + 20
 
     # Right will be filled by and the rest is poured into left
-    elif vol_t/2 > (vol_rmax - vol_r):
+    elif vol_t / 2 > (vol_rmax - vol_r):
         vol_to_fill_right = vol_rmax - vol_r
         vol_r = vol_rmax
         residual_vol = vol_t - vol_to_fill_right
@@ -694,32 +690,35 @@ while tsc.time < tsc.time_final:
         data=d_bulk_ghost,
         state={
             node_var: d_bulk[pp.STATE][node_var],
-            "pressure_head":  d_bulk[pp.STATE][node_var] - d_bulk[pp.PARAMETERS][param_key][
-                "elevation"]
+            "pressure_head": d_bulk[pp.STATE][node_var]
+            - d_bulk[pp.PARAMETERS][param_key]["elevation"],
         },
     )
     pp.set_state(
         data=d_top_ghost,
         state={
-            node_var: get_ghost_hydraulic_head(ghost_frac_list[0],
-                                               d_top[pp.STATE][node_var]),
-            "pressure_head": d_top_ghost[pp.STATE][node_var] - z_top_ghost
+            node_var: get_ghost_hydraulic_head(
+                ghost_frac_list[0], d_top[pp.STATE][node_var]
+            ),
+            "pressure_head": d_top_ghost[pp.STATE][node_var] - z_top_ghost,
         },
     )
     pp.set_state(
         data=d_left_ghost,
         state={
-            node_var: get_ghost_hydraulic_head(ghost_frac_list[1],
-                                               d_left[pp.STATE][node_var]),
-            "pressure_head": d_left_ghost[pp.STATE][node_var] - z_left_ghost
+            node_var: get_ghost_hydraulic_head(
+                ghost_frac_list[1], d_left[pp.STATE][node_var]
+            ),
+            "pressure_head": d_left_ghost[pp.STATE][node_var] - z_left_ghost,
         },
     )
     pp.set_state(
         data=d_right_ghost,
         state={
-            node_var: get_ghost_hydraulic_head(ghost_frac_list[2],
-                                               d_right[pp.STATE][node_var]),
-            "pressure_head": d_right_ghost[pp.STATE][node_var] - z_right_ghost
+            node_var: get_ghost_hydraulic_head(
+                ghost_frac_list[2], d_right[pp.STATE][node_var]
+            ),
+            "pressure_head": d_right_ghost[pp.STATE][node_var] - z_right_ghost,
         },
     )
 
@@ -734,5 +733,5 @@ with open("out/water_volume.pickle", "wb") as handle:
     pickle.dump(
         [times, water_left, water_right, water_top],
         handle,
-        protocol=pickle.HIGHEST_PROTOCOL
+        protocol=pickle.HIGHEST_PROTOCOL,
     )
