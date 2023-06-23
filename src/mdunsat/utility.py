@@ -26,10 +26,12 @@ def capillary_threshold(sat_hydraulic_cond: float):
     DYNAMIC_VISCOSITY: float = 0.001  # [Pa s]
 
     # Intrinsic permeability
-    intrinsic_perm = (sat_hydraulic_cond * DYNAMIC_VISCOSITY) / (DENSITY * GRAVITY)  # [m^2]
+    intrinsic_perm = (sat_hydraulic_cond * DYNAMIC_VISCOSITY) / (
+        DENSITY * GRAVITY
+    )  # [m^2]
 
     # Pressure
-    p = -(0.5 ** 0.64) * intrinsic_perm ** (-0.32)  # [Pa]
+    p = -(0.5**0.64) * intrinsic_perm ** (-0.32)  # [Pa]
 
     # Pressure head
     psi = p / (DENSITY * GRAVITY)  # [m]

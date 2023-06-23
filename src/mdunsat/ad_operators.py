@@ -199,6 +199,7 @@ class InterfaceUpwindAd(ApplicableOperator):
 
         return interface_krw
 
+
 class ParameterScalar(Operator):
     """Extracts a scalar from the parameter dictionary for a given grid or edge
 

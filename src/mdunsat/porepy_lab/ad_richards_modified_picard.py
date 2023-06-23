@@ -31,12 +31,12 @@ def l2_error(g, num_array, true_array, array_sol):
     if array_sol == "pressure":
         V = g.cell_volumes.copy()
         error = (V * (true_array - num_array) ** 2).sum() ** 0.5 / (
-            V * true_array ** 2
+            V * true_array**2
         ).sum() ** 0.5
     elif array_sol == "flux":
         A = g.face_areas.copy()
         error = (A * (true_array - num_array) ** 2).sum() ** 0.5 / (
-            A * true_array ** 2
+            A * true_array**2
         ).sum() ** 0.5
     else:
         raise ValueError("Solution array not recognized. Use pressure or flux")
@@ -105,10 +105,10 @@ else:
 
 # Exact SWRC (Soil Water Retention Curves)
 theta_sym = (theta_s - theta_r) / (
-    1 + (alpha_vG * (p_sym ** 0.5) ** 2.0) ** n_vG
+    1 + (alpha_vG * (p_sym**0.5) ** 2.0) ** n_vG
 ) ** m_vG + theta_r
 S_eff = (theta_sym - theta_r) / (theta_s - theta_r)
-krw_sym = S_eff ** 0.5 * (1 - (1 - S_eff ** (1 / m_vG)) ** m_vG) ** 2
+krw_sym = S_eff**0.5 * (1 - (1 - S_eff ** (1 / m_vG)) ** m_vG) ** 2
 
 # Pressure gradient
 p_grad_sym = [sym.diff(p_sym, x), sym.diff(p_sym, y)]
