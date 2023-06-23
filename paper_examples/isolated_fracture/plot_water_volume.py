@@ -23,9 +23,9 @@ water_volumes: np.ndarray = np.asarray(input_list[1])
 # %% Plot water volume
 fig, ax = plt.subplots(1, 1)
 ax.plot(times, water_volumes, color="black")
-ax.set_xlabel(r"$\mathrm{Time}~[\mathrm{hours}]$", fontsize=15)
+ax.set_xlabel(r"$\mathrm{Time}~[\mathrm{s}]$", fontsize=17)
 ax.set_ylabel(r"$\mathrm{Fracture~water~volume}~\left[\mathrm{cm^3}\right]$",
-              fontsize=15)
+              fontsize=17)
 #ax.set_aspect('equal', adjustable="box")
 fig.tight_layout()
 fig.savefig("out/water_volume.pdf")
