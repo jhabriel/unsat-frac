@@ -648,7 +648,6 @@ while tsc.time < tsc.time_final:
         d_top[pp.STATE][pp.ITERATE][node_var] = (vol_t / 0.1) * sin_t + 50
         d_left[pp.STATE][pp.ITERATE][node_var] = (vol_l / 0.1) * sin_l + 20
         d_right[pp.STATE][pp.ITERATE][node_var] = (vol_r / 0.1) * sin_r + 20
-        #print("L and R are being filled.")
 
     # Right will be filled by and the rest is poured into left
     elif vol_t/2 > (vol_rmax - vol_r):
@@ -688,11 +687,9 @@ while tsc.time < tsc.time_final:
         print("Changing dt to match scheduled time.")
     param_update.update_time_step(tsc.dt)
     set_state_as_iterate(gb, node_var, edge_var)
-    #print("Hydraulic heads:", h_lfn.evaluate(dof_manager).val)
-    #print("Volumes:", vol(h_lfn.evaluate(dof_manager).val))
     print()
 
-    # # Export to ParaView
+    # Export to ParaView
     pp.set_state(
         data=d_bulk_ghost,
         state={
@@ -726,6 +723,7 @@ while tsc.time < tsc.time_final:
         },
     )
 
+    # Export if time is in schedule
     if tsc.time in tsc.schedule:
         export_counter += 1
         exporter_ghost.write_vtu([node_var, "pressure_head"], time_step=export_counter)
@@ -738,18 +736,3 @@ with open("out/water_volume.pickle", "wb") as handle:
         handle,
         protocol=pickle.HIGHEST_PROTOCOL
     )
-
-
-
-# #%%
-# import matplotlib.pyplot as plt
-#
-# fig, ax = plt.subplots(1, 1)
-# plt.plot(times, water_left, label="Left fracture")
-# plt.plot(times, water_right, label="Right fracture")
-# plt.plot(times, water_top, label="Top fracture")
-# plt.legend()
-# plt.show()
-#
-# #%%
-# pp.plot_grid(bulk_list[0], d_bulk[pp.STATE][node_var], linewidth=None, plot_2d=True)
