@@ -1,3 +1,4 @@
+import os
 import mdunsat as mdu
 import numpy as np
 import porepy as pp
@@ -559,10 +560,17 @@ while tsc.time < tsc.time_final:
     if np.isclose(tsc.time, scheduled_time, atol=1e-3):
         export_counter += 1
         exporter.write_vtu([node_var], time_step=export_counter)
-        scheduled_time = tsc.schedule[export_counter + 1]
+        if not np.isclose(tsc.time, tsc.time_final, atol=1e-3):
+            scheduled_time = tsc.schedule[export_counter + 1]
 
     print()
 
 # %% Dump to pickle
+
+# Create the directory if it does not exist
+if not os.path.exists("out"):
+    os.makedirs("out")
+
+# Dump into the pickle file
 with open("out/water_volume.pickle", "wb") as handle:
     pickle.dump([times, water_vol], handle, protocol=pickle.HIGHEST_PROTOCOL)
