@@ -20,7 +20,7 @@ Now, install the dependencies:
 
      pip install -r requirements.txt
 
-**unsat-fract** requires PorePy's (commit b5ddf54cf5e71ee96ec8526234f24a1ee6a81a1c) 
+**unsat-fract** requires PorePy (commit b5ddf54cf5e71ee96ec8526234f24a1ee6a81a1c)
 to be installed. If you do not have PorePy installed, please 
 [do so](https://github.com/pmgbergen/porepy/blob/develop/Install.md) before installing **unsat-frac**.
 
