@@ -3,15 +3,14 @@ Collection of utility AD operators and functions
 Author: @jv
 """
 
+from typing import List, Optional, Tuple, Union
+
+import numpy as np
 # %% Importing modules
 import porepy as pp
-import numpy as np
 import scipy.sparse as sps
-
-from typing import Tuple, List, Union, Optional
-
-from porepy.numerics.ad.operators import ApplicableOperator
 from porepy.numerics.ad.functions import heaviside
+from porepy.numerics.ad.operators import ApplicableOperator
 
 # Typing abbreviations
 Scalar = Union[int, float]
@@ -21,9 +20,9 @@ Edge = Tuple[pp.Grid, pp.Grid]
 
 
 def bulk_cc_var_to_mortar_grid(
-        gb: pp.GridBucket,
-        cc_var: np.ndarray,
-        edge_list: Optional[list[tuple[pp.Grid, pp.Grid]]] = None,
+    gb: pp.GridBucket,
+    cc_var: np.ndarray,
+    edge_list: Optional[list[tuple[pp.Grid, pp.Grid]]] = None,
 ) -> np.ndarray:
     """Projects a cell centered quantity from the bulk onto the mortar grids."
 
@@ -52,9 +51,7 @@ def bulk_cc_var_to_mortar_grid(
     fc_var = np.zeros(g_bulk.num_faces)
     fc_var[frac_faces] = cc_var[cells]
     mortar_var = (
-            mortar_proj.primary_to_mortar_avg.parse(gb)
-            * bulk_face_prol.parse(gb)
-            * fc_var
+        mortar_proj.primary_to_mortar_avg.parse(gb) * bulk_face_prol.parse(gb) * fc_var
     )
 
     return mortar_var
@@ -251,9 +248,9 @@ class ParameterUpdate:
             d = self._gb.edge_props(e)
             base = cum_sum[idx]
             roof = cum_sum[idx + 1]
-            d[pp.PARAMETERS][self._param_key]["is_conductive"] = (
-                is_mortar_conductive[base:roof]
-            )
+            d[pp.PARAMETERS][self._param_key]["is_conductive"] = is_mortar_conductive[
+                base:roof
+            ]
 
     def update_time_step(self, dt: Union[int, float]):
         """
@@ -264,6 +261,7 @@ class ParameterUpdate:
         g_bulk = self._gb.grids_of_dimension(max_dim)[0]
         d_bulk = self._gb.node_props(g_bulk)
         d_bulk[pp.PARAMETERS][self._param_key]["time_step"] = dt
+
 
 # %% Ghost Projections
 # class GhostProjection:

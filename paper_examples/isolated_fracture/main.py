@@ -1,18 +1,16 @@
+import os
+import pickle
+
 import mdunsat as mdu
 import numpy as np
 import porepy as pp
-import pickle
 import scipy.sparse as sps
 import scipy.sparse.linalg as spla
-
 from grid_factory import GridGenerator
-from mdunsat.ad_utils import (
-    get_conductive_mortars,
-    set_state_as_iterate,
-    set_iterate_as_state,
-)
+from mdunsat.ad_utils import (bulk_cc_var_to_mortar_grid,
+                              get_conductive_mortars, set_iterate_as_state,
+                              set_state_as_iterate)
 from mdunsat.soil_catalog import soil_catalog
-from mdunsat.ad_utils import bulk_cc_var_to_mortar_grid
 
 # %% Retrieve grid buckets
 gfo = GridGenerator(
@@ -200,7 +198,8 @@ for g, d in gb:
         pp.set_iterate(d, iterate={node_var: d[pp.STATE][node_var]})
     else:
         pp.set_state(
-            d, state={node_var: np.array([d[pp.PARAMETERS][param_key]["datum"]])},
+            d,
+            state={node_var: np.array([d[pp.PARAMETERS][param_key]["datum"]])},
         )
         pp.set_iterate(d, iterate={node_var: d[pp.STATE][node_var]})
 
@@ -546,9 +545,8 @@ while tsc.time < tsc.time_final:
         print("Changing dt to match scheduled time.")
     param_update.update_time_step(tsc.dt)
     if (
-            vol(d_frac[pp.STATE][node_var])[0]
-            < frac_list[0].cell_volumes.sum()
-            * d_frac[pp.PARAMETERS][param_key]["aperture"]
+        vol(d_frac[pp.STATE][node_var])[0]
+        < frac_list[0].cell_volumes.sum() * d_frac[pp.PARAMETERS][param_key]["aperture"]
     ):
         water_vol.append(vol(d_frac[pp.STATE][node_var])[0])
     else:
@@ -559,11 +557,17 @@ while tsc.time < tsc.time_final:
     if np.isclose(tsc.time, scheduled_time, atol=1e-3):
         export_counter += 1
         exporter.write_vtu([node_var], time_step=export_counter)
-        scheduled_time = tsc.schedule[export_counter + 1]
+        if not np.isclose(tsc.time, tsc.time_final, atol=1e-3):
+            scheduled_time = tsc.schedule[export_counter + 1]
 
     print()
 
 # %% Dump to pickle
+
+# Create the directory if it does not exist
+if not os.path.exists("out"):
+    os.makedirs("out")
+
+# Dump into the pickle file
 with open("out/water_volume.pickle", "wb") as handle:
     pickle.dump([times, water_vol], handle, protocol=pickle.HIGHEST_PROTOCOL)
-

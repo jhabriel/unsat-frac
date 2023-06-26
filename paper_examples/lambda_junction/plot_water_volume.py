@@ -1,7 +1,8 @@
 import pickle
-import numpy as np
-import matplotlib.pyplot as plt
+
 import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
 
 mpl.rc(
     "font",
@@ -14,7 +15,7 @@ plt.rcParams.update(
 )
 
 # %% Open pickle file
-with open('out/water_volume.pickle', 'rb') as handle:
+with open("out/water_volume.pickle", "rb") as handle:
     input_list = pickle.load(handle)
 
 times: np.ndarray = np.asarray(input_list[0])
@@ -29,8 +30,9 @@ ax.plot(times, water_vol_right, color="red", label=r"$V_{2}(t)$")
 ax.plot(times, water_vol_left, color="green", label=r"$V_{3}(t)$")
 ax.plot(times, water_vol_top, color="black", label=r"$V_{4}(t)$")
 ax.set_xlabel(r"$\mathrm{Time}~[\mathrm{s}]$", fontsize=17)
-ax.set_ylabel(r"$\mathrm{Fracture~water~volume}~\left[\mathrm{cm^3}\right]$",
-              fontsize=17)
+ax.set_ylabel(
+    r"$\mathrm{Fracture~water~volume}~\left[\mathrm{cm^3}\right]$", fontsize=17
+)
 ax.legend(fontsize=17)
 fig.tight_layout()
 fig.savefig("out/water_volume.pdf")

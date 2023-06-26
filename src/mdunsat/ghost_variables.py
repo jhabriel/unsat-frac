@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import porepy as pp
+from typing import List, Tuple, Union
+
 import numpy as np
+import porepy as pp
 import scipy.sparse as sps
-from typing import Tuple, List, Union
 
 # Typing abbreviations
 Scalar = Union[int, float]
@@ -33,9 +34,9 @@ class GhostHydraulicHead:
     """
 
     def __init__(
-            self,
-            gb: pp.GridBucket,
-            ghost_gb: pp.GridBucket,
+        self,
+        gb: pp.GridBucket,
+        ghost_gb: pp.GridBucket,
     ):
 
         # Physical grid bucket
@@ -45,9 +46,7 @@ class GhostHydraulicHead:
         self._ghost_gb: pp.GridBucket = ghost_gb
 
         # List grids
-        self._ghost_grid: List[pp.Grid] = [
-            g for g, _ in self._ghost_gb
-        ]
+        self._ghost_grid: List[pp.Grid] = [g for g, _ in self._ghost_gb]
 
         # List of lower-dimensional grids
         self._ghost_low_dim_grids: List[pp.Grid] = [
@@ -55,9 +54,7 @@ class GhostHydraulicHead:
         ]
 
         # List of  edges
-        self._ghost_edges: List[Edge] = [
-            e for e, _ in self._ghost_gb.edges()
-        ]
+        self._ghost_edges: List[Edge] = [e for e, _ in self._ghost_gb.edges()]
 
         # Get the list of ghost grids with g.dim >= (self._maxdim - 1).
         # ghost_grids: List[pp.Grid] = []
@@ -87,8 +84,8 @@ class GhostHydraulicHead:
         )
 
         # Ghost subdomain proj
-        self._ghost_subdomain_proj: pp.ad.SubdomainProjections = pp.ad.SubdomainProjections(
-            grids=self._ghost_grid
+        self._ghost_subdomain_proj: pp.ad.SubdomainProjections = (
+            pp.ad.SubdomainProjections(grids=self._ghost_grid)
         )
 
         # Get the elevation heads of the lower-dimensional grids by concatenating all ndarrays
@@ -100,10 +97,13 @@ class GhostHydraulicHead:
         # self._mortar_psi_l = mortar_proj_pressure_threshold
 
         # Concatenate the representative pressure thresholds for each fracture
-        self._psi_l: np.ndarray = np.asarray([
-            d[pp.PARAMETERS]["flow"]["pressure_threshold"] for g, d in self._gb if
-            g.dim < self._gb.dim_max()
-        ])
+        self._psi_l: np.ndarray = np.asarray(
+            [
+                d[pp.PARAMETERS]["flow"]["pressure_threshold"]
+                for g, d in self._gb
+                if g.dim < self._gb.dim_max()
+            ]
+        )
 
     def __repr__(self) -> str:
         return "Ghost Hydraulic Head Ad Object."
@@ -176,8 +176,7 @@ class GhostHydraulicHead:
 
         """
 
-        #psi_l: np.ndarray = self.project_pressure_threshold_onto_fracture()
-
+        # psi_l: np.ndarray = self.project_pressure_threshold_onto_fracture()
 
         if isinstance(h_frac, pp.ad.Ad_array):
             # Broadcast the fracture hydraulic head. The resulting ad operator will
@@ -215,8 +214,8 @@ class GhostHydraulicHead:
                 grids=self._ghost_low_dim_grids
             ).parse(gb=self._ghost_gb)
 
-            secondary_to_mortar_avg = self._ghost_mortar_proj.secondary_to_mortar_avg.parse(
-                self._ghost_gb
+            secondary_to_mortar_avg = (
+                self._ghost_mortar_proj.secondary_to_mortar_avg.parse(self._ghost_gb)
             )
 
             proj_h_frac: pp.ad.Ad_array = (
@@ -233,8 +232,8 @@ class GhostHydraulicHead:
             cell_prolongation = self._ghost_subdomain_proj.cell_prolongation(
                 grids=self._ghost_low_dim_grids
             ).parse(gb=self._ghost_gb)
-            secondary_to_mortar_avg = self._ghost_mortar_proj.secondary_to_mortar_avg.parse(
-                self._ghost_gb
+            secondary_to_mortar_avg = (
+                self._ghost_mortar_proj.secondary_to_mortar_avg.parse(self._ghost_gb)
             )
             proj_h_frac = secondary_to_mortar_avg * cell_prolongation * hfrac_broad
 

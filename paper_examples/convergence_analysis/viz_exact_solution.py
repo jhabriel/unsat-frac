@@ -1,6 +1,8 @@
+import os
+
 import porepy as pp
-from grid_factory import GridGenerator
 from exact_solution import ExactSolution
+from grid_factory import GridGenerator
 
 # %% Retrieve exact solution object
 ex = ExactSolution()
@@ -31,10 +33,16 @@ h_frac_ex = ex.fracture_hydraulic_head(final_time)
 d_bulk[pp.STATE]["hydraulic_head"] = h_bulk_ex
 d_frac[pp.STATE]["hydraulic_head"] = h_frac_ex
 
-# Uncomment to plot with PorePy
+# %%  Uncomment to plot with PorePy
 # pp.plot_grid(g_bulk, h_bulk_ex, linewidth=0, plot_2d=True)
 # pp.plot_grid(g_bulk, psi_bulk_ex, linewidth=0, plot_2d=True)
 
 # %% Export to ParaView
+
+# Create the directory if it does not exist
+if not os.path.exists("out"):
+    os.makedirs("out")
+
+# Create ParaView
 exporter = pp.Exporter(gb, "conv_analysis", "out")
 exporter.write_vtu(["hydraulic_head"])

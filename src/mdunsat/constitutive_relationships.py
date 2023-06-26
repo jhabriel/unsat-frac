@@ -1,7 +1,8 @@
-import porepy as pp
+from typing import List, Literal, Tuple, Union
+
 import numpy as np
+import porepy as pp
 import scipy.sparse as sps
-from typing import Tuple, List, Literal, Union
 
 from mdunsat.ad_utils import bulk_cc_var_to_mortar_grid
 
@@ -28,11 +29,11 @@ def capillary_threshold(hydraulic_conductivity: np.ndarray) -> np.ndarray:
 
     """
     DENSITY = 1014  # kg / m^3
-    VISCOSITY = 1E-03  # Pa . s
+    VISCOSITY = 1e-03  # Pa . s
     GRAVITY = 9.81  # m / s^2
     GAMMA = DENSITY * GRAVITY
 
-    a = - (0.5 ** 0.64) / GAMMA
+    a = -(0.5**0.64) / GAMMA
     b = ((VISCOSITY * hydraulic_conductivity) / GAMMA) ** (-0.32)
 
     return a * b
@@ -42,10 +43,7 @@ class FractureVolume:
     """Constitutive relationship for fracture volume as a function of the hyd head,"""
 
     def __init__(
-        self,
-        gb: pp.GridBucket,
-        fracture_grids: List[pp.Grid],
-        param_key: str
+        self, gb: pp.GridBucket, fracture_grids: List[pp.Grid], param_key: str
     ):
         """
         Init method for the class.
@@ -160,9 +158,10 @@ class FractureVolume:
             sin_alpha_inv = sps.spdiags(self._sin_alpha ** (-1), 0, self._N, self._N)
             width = sps.spdiags(self._width, 0, self._N, self._N)
             water_volume: pp.ad.Ad_array = (
-                aper * width * sin_alpha_inv * (
-                    hydraulic_head - self._datum - self._pressure_threshold
-                )
+                aper
+                * width
+                * sin_alpha_inv
+                * (hydraulic_head - self._datum - self._pressure_threshold)
             )
 
             # Correct values of water volume accordingly
@@ -174,9 +173,13 @@ class FractureVolume:
         else:
             # Here, we don't need to do anything, numpy will take care of correctly
             # broadcasting everything for us
-            water_volume: np.ndarray = self._aperture * self._width * (
-                (hydraulic_head - self._datum - self._pressure_threshold) /
-                self._sin_alpha
+            water_volume: np.ndarray = (
+                self._aperture
+                * self._width
+                * (
+                    (hydraulic_head - self._datum - self._pressure_threshold)
+                    / self._sin_alpha
+                )
             )
 
             # Correct values of water volume accordingly
@@ -216,7 +219,7 @@ class SWRC:
 
     # TODO: REMOVE CLASS
 
-    def __init__(self, param_key: str, gb: pp.GridBucket,  grid_list: List[pp.Grid]):
+    def __init__(self, param_key: str, gb: pp.GridBucket, grid_list: List[pp.Grid]):
 
         self.kw = param_key
         self.grid_list = grid_list
@@ -266,7 +269,9 @@ class SWRC:
 
     # Public methods
     def water_content(
-            self, as_ad: bool = True, cc: bool = True,
+        self,
+        as_ad: bool = True,
+        cc: bool = True,
     ) -> Union["_water_content_cc", "_water_content_fc", pp.ad.Function]:
         """
         Water content as a function of the pressure head.
@@ -292,7 +297,9 @@ class SWRC:
 
     def relative_permeability(
         self, as_ad: bool = True, cc: bool = True
-    ) -> Union["_relative_permeability_cc", "_relative_permeability_fc",  pp.ad.Function]:
+    ) -> Union[
+        "_relative_permeability_cc", "_relative_permeability_fc", pp.ad.Function
+    ]:
         """
         Relative permeability as a function of the pressure head.
 
@@ -320,7 +327,9 @@ class SWRC:
                 return self._relative_permeability_fc
 
     def moisture_capacity(
-        self, as_ad: bool = True, cc: bool = True,
+        self,
+        as_ad: bool = True,
+        cc: bool = True,
     ) -> Union["_moisture_capacity_cc", "_moisture_capacity_fc", pp.ad.Function]:
         """
         Specific moisture capacity as a function of the pressure head.
@@ -355,19 +364,21 @@ class SWRC:
             is_sat = 1 - is_unsat
             numer = self._theta_s_cc - self._theta_r_cc
             denom = (
-                    1 + (pp.ad.abs(psi) * self._alpha_vg_cc) ** self._n_vg_cc
-                  ) ** self._m_vg_cc
+                1 + (pp.ad.abs(psi) * self._alpha_vg_cc) ** self._n_vg_cc
+            ) ** self._m_vg_cc
             theta = (
-                    denom ** (-1) * numer + self._theta_r_cc
-                    ) * is_unsat + self._theta_s_cc * is_sat
+                denom ** (-1) * numer + self._theta_r_cc
+            ) * is_unsat + self._theta_s_cc * is_sat
         else:  # typically int, float, or np.ndarray
             is_unsat = self._is_unsat(psi)
             is_sat = 1 - is_unsat
             numer = self._theta_s_cc - self._theta_r_cc
             denom = (
-                    1 + (self._alpha_vg_cc * np.abs(psi)) ** self._n_vg_cc
-                  ) ** self._m_vg_cc
-            theta = (numer / denom + self._theta_r_cc) * is_unsat + self._theta_s_cc * is_sat
+                1 + (self._alpha_vg_cc * np.abs(psi)) ** self._n_vg_cc
+            ) ** self._m_vg_cc
+            theta = (
+                numer / denom + self._theta_r_cc
+            ) * is_unsat + self._theta_s_cc * is_sat
 
         return theta
 
@@ -377,19 +388,21 @@ class SWRC:
             is_sat = 1 - is_unsat
             numer = self._theta_s_fc - self._theta_r_fc
             denom = (
-                    1 + (pp.ad.abs(psi) * self._alpha_vg_fc) ** self._n_vg_fc
-                  ) ** self._m_vg_fc
+                1 + (pp.ad.abs(psi) * self._alpha_vg_fc) ** self._n_vg_fc
+            ) ** self._m_vg_fc
             theta = (
-                    denom ** (-1) * numer + self._theta_r_fc
-                    ) * is_unsat + self._theta_s_fc * is_sat
+                denom ** (-1) * numer + self._theta_r_fc
+            ) * is_unsat + self._theta_s_fc * is_sat
         else:  # typically int, float, or np.ndarray
             is_unsat = self._is_unsat(psi)
             is_sat = 1 - is_unsat
             numer = self._theta_s_fc - self._theta_r_fc
             denom = (
-                    1 + (self._alpha_vg_fc * np.abs(psi)) ** self._n_vg_fc
-                  ) ** self._m_vg_fc
-            theta = (numer / denom + self._theta_r_fc) * is_unsat + self._theta_s_fc * is_sat
+                1 + (self._alpha_vg_fc * np.abs(psi)) ** self._n_vg_fc
+            ) ** self._m_vg_fc
+            theta = (
+                numer / denom + self._theta_r_fc
+            ) * is_unsat + self._theta_s_fc * is_sat
 
         return theta
 
@@ -441,7 +454,10 @@ class SWRC:
             raise TypeError("Pressure head cannot be AD. Expected non-ad object.")
         else:  # typically int, float, or np.ndarray
             s_eff = self._effective_saturation_cc(psi)
-            krw = s_eff ** 0.5 * (1 - (1 - s_eff ** (1 / self._m_vg_cc)) ** self._m_vg_cc) ** 2
+            krw = (
+                s_eff**0.5
+                * (1 - (1 - s_eff ** (1 / self._m_vg_cc)) ** self._m_vg_cc) ** 2
+            )
 
         return krw
 
@@ -459,7 +475,10 @@ class SWRC:
             raise TypeError("Pressure head cannot be AD. Expected non-ad object.")
         else:  # typically int, float, or np.ndarray
             s_eff = self._effective_saturation_fc(psi)
-            krw = s_eff ** 0.5 * (1 - (1 - s_eff ** (1 / self._m_vg_fc)) ** self._m_vg_fc) ** 2
+            krw = (
+                s_eff**0.5
+                * (1 - (1 - s_eff ** (1 / self._m_vg_fc)) ** self._m_vg_fc) ** 2
+            )
 
         return krw
 
@@ -484,9 +503,9 @@ class SWRC:
                 * (self._theta_s_cc - self._theta_r_cc)
                 * (self._alpha_vg_cc * np.abs(psi)) ** self._n_vg_cc
             )
-            den = psi * (
-                (self._alpha_vg_cc * np.abs(psi)) ** self._n_vg_cc + 1
-            ) ** (self._m_vg_cc + 1)
+            den = psi * ((self._alpha_vg_cc * np.abs(psi)) ** self._n_vg_cc + 1) ** (
+                self._m_vg_cc + 1
+            )
             # Here, we have to be particularly careful with division by zero. If zero is
             # encountered in the denominator, we force the moisture capacity to be zero.
             moist_capacity = (
@@ -518,9 +537,9 @@ class SWRC:
                 * (self._theta_s_fc - self._theta_r_fc)
                 * (self._alpha_vg_fc * np.abs(psi)) ** self._n_vg_fc
             )
-            den = psi * (
-                (self._alpha_vg_fc * np.abs(psi)) ** self._n_vg_fc + 1
-            ) ** (self._m_vg_fc + 1)
+            den = psi * ((self._alpha_vg_fc * np.abs(psi)) ** self._n_vg_fc + 1) ** (
+                self._m_vg_fc + 1
+            )
             # Here, we have to be particularly careful with division by zero. If zero is
             # encountered in the denominator, we force the moisture capacity to be zero.
             moist_capacity = (
@@ -551,10 +570,10 @@ class VanGenuchtenMualem:
     """Parent class for van Genuchten Mualem model."""
 
     def __init__(
-            self,
-            gb: pp.GridBucket,
-            param_key: str,
-            dof_manager: pp.DofManager,
+        self,
+        gb: pp.GridBucket,
+        param_key: str,
+        dof_manager: pp.DofManager,
     ):
         """Init method for the class.
 
@@ -591,7 +610,9 @@ class VanGenuchtenMualem:
         param_dict: dict = d_bulk[pp.PARAMETERS][self._kw]
         self.alpha_vG: np.ndarray = param_dict["alpha_vG"]  # alpha parameter
         self.theta_r: np.ndarray = param_dict["theta_r"]  # residual water content
-        self.theta_s: np.ndarray = param_dict["theta_s"]  # water content at sat contditions
+        self.theta_s: np.ndarray = param_dict[
+            "theta_s"
+        ]  # water content at sat contditions
         self.n_vG: np.ndarray = param_dict["n_vG"]  # n parameter
         self.m_vG: np.ndarray = param_dict["m_vG"]  # m parameter
 
@@ -670,10 +691,11 @@ class VanGenuchtenMualem:
         """
         if as_ad:
             return pp.ad.Function(
-                self._relative_permeability, name="Relative permeability",
+                self._relative_permeability,
+                name="Relative permeability",
             )
         else:
-            return self._relative_permeability,
+            return (self._relative_permeability,)
 
     def moisture_capacity(
         self,
@@ -695,8 +717,7 @@ class VanGenuchtenMualem:
                 name="Specific moisture capacity",
             )
         else:
-            return self._moisture_capacity,
-
+            return (self._moisture_capacity,)
 
     # Private methods
     def _water_content(
@@ -734,8 +755,7 @@ class VanGenuchtenMualem:
         return theta
 
     def _effective_saturation(
-            self,
-            pressure_head: Union[AdArray, NonAd]
+        self, pressure_head: Union[AdArray, NonAd]
     ) -> Union[AdArray, NonAd]:
         """Effective saturation as a function of the pressure head.
 
@@ -769,7 +789,7 @@ class VanGenuchtenMualem:
             raise TypeError("Pressure head cannot be AD. Expected non-ad object.")
         else:  # typically int, float, or np.ndarray
             s_eff = self._effective_saturation(pressure_head)
-            krw = s_eff ** 0.5 * (1 - (1 - s_eff ** (1 / m_vG)) ** m_vG) ** 2
+            krw = s_eff**0.5 * (1 - (1 - s_eff ** (1 / m_vG)) ** m_vG) ** 2
 
         return krw
 
@@ -791,12 +811,14 @@ class VanGenuchtenMualem:
             is_unsat = self._is_unsat(pressure_head)
             is_sat = 1 - is_unsat
             num = (
-                    -m_vG * n_vG * (theta_s - theta_r)
-                    * (alpha_vG * np.abs(pressure_head)) ** n_vG
+                -m_vG
+                * n_vG
+                * (theta_s - theta_r)
+                * (alpha_vG * np.abs(pressure_head)) ** n_vG
             )
-            den = pressure_head * (
-                (alpha_vG * np.abs(pressure_head)) ** n_vG + 1
-            ) ** (m_vG + 1)
+            den = pressure_head * ((alpha_vG * np.abs(pressure_head)) ** n_vG + 1) ** (
+                m_vG + 1
+            )
             # Here, we have to be particularly careful with zero division. If zero is
             # encountered in the denominator, we force the moisture capacity to be zero.
             moist_capacity = (
@@ -825,8 +847,8 @@ class VanGenuchtenMualem:
             return 1 - pp.ad.heaviside(pressure_head, 1)
 
     def _get_vG_properties(
-            self,
-            pressure_head: Union[AdArray, NonAd],
+        self,
+        pressure_head: Union[AdArray, NonAd],
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Retrieve vanGenuchten parameters based on whether they are defined in the
         cell centers or on the boundaries of the domain.
@@ -871,8 +893,10 @@ class VanGenuchtenMualem:
             n_vG = self.n_vG_mortar
             m_vG = self.m_vG_mortar
         else:
-            raise ValueError("Hydraulic properties only defined at the interior of "
-                             "the bulk, the boundary of the bulk, and on the "
-                             "interfaces.")
+            raise ValueError(
+                "Hydraulic properties only defined at the interior of "
+                "the bulk, the boundary of the bulk, and on the "
+                "interfaces."
+            )
 
         return theta_s, theta_r, alpha_vG, n_vG, m_vG

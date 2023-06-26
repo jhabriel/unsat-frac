@@ -1,6 +1,8 @@
-import matplotlib.pyplot as plt
-import matplotlib as mpl
+import os
 import pickle
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 
 mpl.rc(
     "font",
@@ -39,5 +41,11 @@ for mesh_size in mesh_sizes:
     errors["error_vol_frac"].append(out["error_vol_frac"])
 
 #%% Save errors to reproduce results
+
+# Create the directory if it does not exist
+if not os.path.exists("out"):
+    os.makedirs("out")
+
+# Dump into the pickle file
 with open("out/l2_errors.pickle", "wb") as handle:
     pickle.dump([errors, mesh_sizes], handle, protocol=pickle.HIGHEST_PROTOCOL)

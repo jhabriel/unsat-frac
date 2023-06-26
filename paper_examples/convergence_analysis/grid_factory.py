@@ -1,6 +1,7 @@
-import porepy as pp
+from typing import Dict, List, Optional, Tuple, Union
+
 import numpy as np
-from typing import Union, List, Tuple, Optional, Dict
+import porepy as pp
 
 Edge = Tuple[pp.Grid, pp.Grid]
 

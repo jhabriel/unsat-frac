@@ -1,15 +1,13 @@
-# unsat-frac: A PorePy extension package for simulating the unsaturated flow in fractured porous media
-<img src="show.gif" width="700">
+# unsat-frac: A PorePy extension package for simulating the saturated-unsaturated flow in fractured porous media
 
-**Animation:** Fast flow of water through the fracture.
-
-**unsat-frac** is a Python package created as an extension of [PorePy](https://github.com/pmgbergen/porepy) for modeling and simulation of the unsaturated flow in the presence of fractures acting as capillary barriers.
+**unsat-frac** is a Python package created as an extension of [PorePy](https://github.com/pmgbergen/porepy) for modeling and simulation of the unsaturated 
+flow with fractures acting as capillary barriers.
 
 ## Citing
 
 If you use **unsat-frac** in your research, we ask you to cite the following reference:
 
-*Add reference*
+*Add pre-print reference*
 
 ## Installation from source
 
@@ -22,7 +20,9 @@ Now, install the dependencies:
 
      pip install -r requirements.txt
 
-**unsat-fract** requires the latest developer version of PorePy. If you do not have PorePy installed, please [do so](https://github.com/pmgbergen/porepy/blob/develop/Install.md) before installing **unsat-frac**.
+**unsat-fract** requires PorePy's (commit b5ddf54cf5e71ee96ec8526234f24a1ee6a81a1c) 
+to be installed. If you do not have PorePy installed, please 
+[do so](https://github.com/pmgbergen/porepy/blob/develop/Install.md) before installing **unsat-frac**.
 
 To install **unsat-frac**:
 
@@ -34,7 +34,7 @@ Or, for user-editable installations:
 
 ## Examples
 
-All the numerical examples included in the manuscript can be found in the **paper_examples** folder. For the moment, tested numerical examples include 01_2d_vertical_fracture and 02_2d_junction
+All the numerical examples included in the manuscript can be found in the **paper_examples** folder.
 
 ## Troubleshooting
 Create an [issue](https://github.com/jhabriel/unsat-frac).
