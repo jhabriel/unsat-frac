@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/333197352.svg)](https://zenodo.org/badge/latestdoi/333197352)
+
 # unsat-frac: A PorePy extension package for simulating the saturated-unsaturated flow in fractured porous media
 
 **unsat-frac** is a Python package created as an extension of [PorePy](https://github.com/pmgbergen/porepy) for modeling and simulation of the unsaturated 
