@@ -1,7 +1,8 @@
-import porepy as pp
+from typing import List, Literal, Tuple, Union
+
 import numpy as np
+import porepy as pp
 import scipy.sparse as sps
-from typing import Tuple, List, Literal, Union
 
 from mdunsat.ad_utils import bulk_cc_var_to_mortar_grid
 

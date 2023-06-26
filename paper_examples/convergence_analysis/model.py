@@ -2,15 +2,11 @@ import mdunsat as mdu
 import numpy as np
 import porepy as pp
 import scipy.sparse.linalg as spla
-
-from grid_factory import GridGenerator
-from mdunsat.ad_utils import (
-    get_conductive_mortars,
-    set_state_as_iterate,
-    set_iterate_as_state,
-)
-from mdunsat.analysis_utils import relative_l2_error
 from exact_solution import ExactSolution
+from grid_factory import GridGenerator
+from mdunsat.ad_utils import (get_conductive_mortars, set_iterate_as_state,
+                              set_state_as_iterate)
+from mdunsat.analysis_utils import relative_l2_error
 
 
 def manufactured_model(

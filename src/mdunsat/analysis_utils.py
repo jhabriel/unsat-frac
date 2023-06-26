@@ -1,7 +1,7 @@
-import porepy as pp
-import numpy as np
-
 from typing import Union
+
+import numpy as np
+import porepy as pp
 
 
 def relative_l2_error(

@@ -3,15 +3,14 @@ Collection of utility AD operators and functions
 Author: @jv
 """
 
+from typing import List, Optional, Tuple, Union
+
+import numpy as np
 # %% Importing modules
 import porepy as pp
-import numpy as np
 import scipy.sparse as sps
-
-from typing import Tuple, List, Union, Optional
-
-from porepy.numerics.ad.operators import ApplicableOperator
 from porepy.numerics.ad.functions import heaviside
+from porepy.numerics.ad.operators import ApplicableOperator
 
 # Typing abbreviations
 Scalar = Union[int, float]

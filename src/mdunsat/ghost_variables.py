@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import porepy as pp
+from typing import List, Tuple, Union
+
 import numpy as np
+import porepy as pp
 import scipy.sparse as sps
-from typing import Tuple, List, Union
 
 # Typing abbreviations
 Scalar = Union[int, float]

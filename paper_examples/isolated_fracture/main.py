@@ -1,19 +1,16 @@
 import os
+import pickle
+
 import mdunsat as mdu
 import numpy as np
 import porepy as pp
-import pickle
 import scipy.sparse as sps
 import scipy.sparse.linalg as spla
-
 from grid_factory import GridGenerator
-from mdunsat.ad_utils import (
-    get_conductive_mortars,
-    set_state_as_iterate,
-    set_iterate_as_state,
-)
+from mdunsat.ad_utils import (bulk_cc_var_to_mortar_grid,
+                              get_conductive_mortars, set_iterate_as_state,
+                              set_state_as_iterate)
 from mdunsat.soil_catalog import soil_catalog
-from mdunsat.ad_utils import bulk_cc_var_to_mortar_grid
 
 # %% Retrieve grid buckets
 gfo = GridGenerator(

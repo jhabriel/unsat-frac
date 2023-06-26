@@ -1,8 +1,8 @@
-import porepy as pp
 import os
 
-from grid_factory import GridGenerator
+import porepy as pp
 from exact_solution import ExactSolution
+from grid_factory import GridGenerator
 
 # %% Retrieve exact solution object
 ex = ExactSolution()
@@ -46,4 +46,3 @@ if not os.path.exists("out"):
 # Create ParaView
 exporter = pp.Exporter(gb, "conv_analysis", "out")
 exporter.write_vtu(["hydraulic_head"])
-

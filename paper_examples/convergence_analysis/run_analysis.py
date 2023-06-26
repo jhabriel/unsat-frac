@@ -1,7 +1,8 @@
-import matplotlib.pyplot as plt
-import matplotlib as mpl
-import pickle
 import os
+import pickle
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 
 mpl.rc(
     "font",

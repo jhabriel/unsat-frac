@@ -2,12 +2,14 @@
 Collection of ad operators of extended functionality relative to the ones available in PorePy.
 """
 
-import porepy as pp
+from typing import (Any, Callable, List, Literal, NewType, Optional, Tuple,
+                    Union)
+
 import numpy as np
+import porepy as pp
 import scipy.sparse as sps
-from porepy.numerics.ad.operators import Operator, ApplicableOperator
 from porepy.numerics.ad.functions import heaviside
-from typing import Callable, Optional, Tuple, List, Any, Union, NewType, Literal
+from porepy.numerics.ad.operators import ApplicableOperator, Operator
 
 # Typing abbreviations
 Scalar = Union[int, float]
