@@ -3,6 +3,7 @@ import numpy as np
 import porepy as pp
 import pickle
 import scipy.sparse.linalg as spla
+import os
 
 from grid_factory import GridGenerator
 from mdunsat.ad_utils import (
@@ -13,6 +14,7 @@ from mdunsat.ad_utils import (
     bulk_cc_var_to_mortar_grid,
 )
 from mdunsat.soil_catalog import soil_catalog
+
 
 # %% Retrieve grid buckets
 gfo = GridGenerator(
@@ -628,12 +630,22 @@ while tsc.time < tsc.time_final:
     vol_t = vol(h_lfn.evaluate(dof_manager).val)[0]
     vol_l = vol(h_lfn.evaluate(dof_manager).val)[1]
     vol_r = vol(h_lfn.evaluate(dof_manager).val)[2]
-    vol_tmax = 40 * 0.1
-    vol_lmax = 42.42640687 * 0.1
-    vol_rmax = 31.6227766 * 0.1
-    sin_t = 1
-    sin_l = 0.7071067811865475
-    sin_r = 0.9486832980505138
+
+    a_t = d_top[pp.PARAMETERS][param_key]["aperture"]
+    a_l = d_left[pp.PARAMETERS][param_key]["aperture"]
+    a_r = d_right[pp.PARAMETERS][param_key]["aperture"]
+
+    vol_tmax = g_top.cell_volumes[0] * a_t
+    vol_lmax = g_left.cell_volumes[0] * a_l
+    vol_rmax = g_right.cell_volumes[0] * a_r
+
+    sin_t = d_top[pp.PARAMETERS][param_key]["sin_alpha"]
+    sin_l = d_left[pp.PARAMETERS][param_key]["sin_alpha"]
+    sin_r = d_right[pp.PARAMETERS][param_key]["sin_alpha"]
+
+    zmin_t = d_top[pp.PARAMETERS][param_key]["datum"]
+    zmin_l = d_left[pp.PARAMETERS][param_key]["datum"]
+    zmin_r = d_right[pp.PARAMETERS][param_key]["datum"]
 
     # Left and right fractures can receive water
     if (vol_lmax - vol_l) > vol_t / 2 and (vol_rmax - vol_r) > vol_t / 2:
@@ -641,9 +653,9 @@ while tsc.time < tsc.time_final:
         vol_r = vol_r + vol_t / 2
         vol_t = 0
         # Correct values of hydraulic head after redistribution
-        d_top[pp.STATE][pp.ITERATE][node_var] = (vol_t / 0.1) * sin_t + 50
-        d_left[pp.STATE][pp.ITERATE][node_var] = (vol_l / 0.1) * sin_l + 20
-        d_right[pp.STATE][pp.ITERATE][node_var] = (vol_r / 0.1) * sin_r + 20
+        d_top[pp.STATE][pp.ITERATE][node_var] = (vol_t / a_t) * sin_t + zmin_t
+        d_left[pp.STATE][pp.ITERATE][node_var] = (vol_l / a_l) * sin_l + zmin_l
+        d_right[pp.STATE][pp.ITERATE][node_var] = (vol_r / a_r) * sin_r + zmin_r
 
     # Right will be filled by and the rest is poured into left
     elif vol_t / 2 > (vol_rmax - vol_r):
@@ -662,11 +674,11 @@ while tsc.time < tsc.time_final:
                 vol_t = vol_tmax
         # Correct values of hydraulic head after redistribution
         if vol_t <= vol_tmax:
-            d_top[pp.STATE][pp.ITERATE][node_var] = (vol_t / 0.1) * sin_t + 50
+            d_top[pp.STATE][pp.ITERATE][node_var] = (vol_t / a_t) * sin_t + zmin_t
         if vol_l <= vol_lmax:
-            d_left[pp.STATE][pp.ITERATE][node_var] = (vol_l / 0.1) * sin_l + 20
+            d_left[pp.STATE][pp.ITERATE][node_var] = (vol_l / a_l) * sin_l + zmin_l
         if vol_r <= vol_rmax:
-            d_right[pp.STATE][pp.ITERATE][node_var] = (vol_r / 0.1) * sin_r + 20
+            d_right[pp.STATE][pp.ITERATE][node_var] = (vol_r / a_r) * sin_r + zmin_r
 
     # Save number of iterations and time step
     iters.append(itr - 1)
@@ -726,9 +738,15 @@ while tsc.time < tsc.time_final:
     if tsc.time in tsc.schedule:
         export_counter += 1
         exporter_ghost.write_vtu([node_var, "pressure_head"], time_step=export_counter)
-        scheduled_time = tsc.schedule[export_counter + 1]
+        if not np.isclose(tsc.time, tsc.time_final, atol=1e-3):
+            scheduled_time = tsc.schedule[export_counter + 1]
 
 # %% Dump to pickle
+
+# Create the directory if it does not exist
+if not os.path.exists("out"):
+    os.makedirs("out")
+
 with open("out/water_volume.pickle", "wb") as handle:
     pickle.dump(
         [times, water_left, water_right, water_top],
