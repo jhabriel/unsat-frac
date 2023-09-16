@@ -36,11 +36,11 @@ ghost_frac_list = gfo.get_fracture_list(ghost_gb)
 ghost_edge_list = gfo.get_edge_list(ghost_gb)
 
 # %% Time parameters
-schedule = list(np.linspace(0, 4800, 100, dtype=np.int32))
+schedule = list(np.linspace(0, 5000, 200, dtype=np.int32))
 tsc = pp.TimeSteppingControl(
     schedule=schedule,
     dt_init=0.01,
-    dt_min_max=(0.01, 48),
+    dt_min_max=(0.01, 25),
     iter_max=30,
     iter_optimal_range=(10, 15),
     iter_lowupp_factor=(1.5, 0.5),
@@ -160,7 +160,7 @@ for g, d in gb:
     else:
         # Parameters for the fracture grids
         specified_parameters = {
-            "aperture": 0.1,  # [cm]
+            "aperture": 0.4,  # [cm]
             "datum": np.min(g.face_centers[gb.dim_max() - 1]),
             "elevation": g.cell_centers[gb.dim_max() - 1],
             "sin_alpha": 1.0,
@@ -540,7 +540,7 @@ while tsc.time < tsc.time_final:
     # Successful convergence
     print(f"Solution converged in {itr - 1} iterations.")
     tsc.next_time_step(recompute_solution=False, iterations=itr - 1)
-    if tsc.time + tsc.dt > scheduled_time:
+    if tsc.time + tsc.dt > scheduled_time and scheduled_time - tsc.time > 0:
         tsc.dt = scheduled_time - tsc.time
         print("Changing dt to match scheduled time.")
     param_update.update_time_step(tsc.dt)
