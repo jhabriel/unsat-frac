@@ -39,17 +39,17 @@ def equidim_model(
 
     #%% Create grid
     x_left_block = np.concatenate((np.array([0.0]), gradient_segments(30, 0.995, 0, 30)))
-    x_block = gradient_segments(20, 0.995, 30, 49.5)
+    x_block = gradient_segments(20, 0.995, 30, 49.8)
     x_left = np.concatenate((x_left_block, x_block))
     # x_fracture = np.array([49.75, 49.90, 50.0, 50.10, 50.25])
     # x_fracture = np.array([50])
     x_fracture = np.array([])
     x_right = np.concatenate(
-        (np.array([50.5]), 50.5 + np.cumsum(np.flip(x_left[1:] - x_left[:-1])))
+        (np.array([50.2]), 50.2 + np.cumsum(np.flip(x_left[1:] - x_left[:-1])))
     )
     x = np.concatenate((x_left, x_fracture))
     x = np.concatenate((x, x_right))
-    y = np.linspace(0, 100, np.int(100/2.5 + 1))  # (100/2.5 + 1) will also do the job
+    y = np.linspace(0, 100, np.int(100/1.25 + 1))  # (100/2.5 + 1) will also do the job
     gb = pp.meshing.tensor_grid([], x=x, y=y, z=None)
     g = gb.grids_of_dimension(2)[0]
     # Uncomment to plot grid
@@ -57,11 +57,11 @@ def equidim_model(
 
 
     #%% Time-stepping control
-    schedule = list(np.linspace(0, 4800, 100, dtype=np.int32))
+    schedule = list(np.linspace(0, 500, 20, dtype=np.int32))
     tsc = pp.TimeSteppingControl(
         schedule=schedule,
         dt_init=0.01,
-        dt_min_max=(0.01, 100),
+        dt_min_max=(0.01, 25),
         iter_max=30,
         iter_optimal_range=(10, 15),
         iter_lowupp_factor=(1.5, 0.5),
@@ -113,8 +113,8 @@ def equidim_model(
 
         # Cell indices for the fractures
         fracture_idx: list = [
-            cc[0] > 49.5,
-            cc[0] < 50.5,
+            cc[0] > 49.8,
+            cc[0] < 50.2,
             cc[1] < 90.0,
             cc[1] > 10.0,
         ]
