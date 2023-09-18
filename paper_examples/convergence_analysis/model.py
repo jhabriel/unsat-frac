@@ -4,8 +4,11 @@ import porepy as pp
 import scipy.sparse.linalg as spla
 from exact_solution import ExactSolution
 from grid_factory import GridGenerator
-from mdunsat.ad_utils import (get_conductive_mortars, set_iterate_as_state,
-                              set_state_as_iterate)
+from mdunsat.ad_utils import (
+    get_conductive_mortars,
+    set_iterate_as_state,
+    set_state_as_iterate,
+)
 from mdunsat.analysis_utils import relative_l2_error
 
 

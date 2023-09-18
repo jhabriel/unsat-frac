@@ -9,7 +9,7 @@ flow with fractures acting as capillary barriers.
 
 If you use **unsat-frac** in your research, we ask you to cite the following reference:
 
-*Add pre-print reference*
+Varela, J., Keilegavlen, E., Nordbotten, J. M., & Radu, F. A. (2023). A Model for Saturated-Unsaturated Flow with Fractures Acting as Capillary Barriers. Authorea Preprints.
 
 ## Installation from source
 

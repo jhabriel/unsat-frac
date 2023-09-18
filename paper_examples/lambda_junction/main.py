@@ -6,9 +6,13 @@ import numpy as np
 import porepy as pp
 import scipy.sparse.linalg as spla
 from grid_factory import GridGenerator
-from mdunsat.ad_utils import (bulk_cc_var_to_mortar_grid,
-                              get_conductive_mortars, get_ghost_hydraulic_head,
-                              set_iterate_as_state, set_state_as_iterate)
+from mdunsat.ad_utils import (
+    bulk_cc_var_to_mortar_grid,
+    get_conductive_mortars,
+    get_ghost_hydraulic_head,
+    set_iterate_as_state,
+    set_state_as_iterate,
+)
 from mdunsat.soil_catalog import soil_catalog
 
 # %% Retrieve grid buckets
@@ -46,7 +50,7 @@ ghost_edge_list = gfo.edge_list(ghost_gb)
 ghost_frac_edge_list = gfo.fracture_edge_list(ghost_gb)
 
 # %% Time parameters
-schedule = list(np.linspace(0, 1130, 100))
+schedule = list(np.linspace(0, 1220, 250))
 tsc = pp.TimeSteppingControl(
     schedule=schedule,
     dt_init=0.1,
@@ -183,7 +187,7 @@ for g, d in gb:
         specified_parameters = {
             "sin_alpha": gfo.fracture_sin_alpha(g),
             "width": 1.0,
-            "aperture": 0.1,
+            "aperture": 0.4,
             "bc": bc,
             "bc_values": np.zeros(g.num_faces),
             "datum": np.min(g.face_centers[gb.dim_max() - 1]),
@@ -685,7 +689,7 @@ while tsc.time < tsc.time_final:
 
     # Successful convergence
     tsc.next_time_step(recompute_solution=False, iterations=itr - 1)
-    if tsc.time + tsc.dt > scheduled_time:
+    if tsc.time + tsc.dt > scheduled_time and scheduled_time - tsc.time > 0:
         tsc.dt = scheduled_time - tsc.time
         print("Changing dt to match scheduled time.")
     param_update.update_time_step(tsc.dt)
