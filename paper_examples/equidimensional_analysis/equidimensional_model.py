@@ -3,12 +3,11 @@ import mdunsat as mdu
 import numpy as np
 import porepy as pp
 import scipy.sparse.linalg as spla
-
 from mdunsat.ad_utils import set_iterate_as_state, set_state_as_iterate
 
 
 def gradient_segments(
-        num_segments: int, increment_factor: float, start: float, end: float
+    num_segments: int, increment_factor: float, start: float, end: float
 ) -> np.ndarray:
     """Return a list of segments with a geometrically increasing gradient.
 
@@ -31,14 +30,16 @@ def gradient_segments(
 
 #%% ---> Start of the equi-dimensional model
 def equidim_model(
-        matrix_params: dict,
-        fracture_params: dict,
-        block_params: dict,
-        out_fname: str,
+    matrix_params: dict,
+    fracture_params: dict,
+    block_params: dict,
+    out_fname: str,
 ):
 
     #%% Create grid
-    x_left_block = np.concatenate((np.array([0.0]), gradient_segments(30, 0.995, 0, 30)))
+    x_left_block = np.concatenate(
+        (np.array([0.0]), gradient_segments(30, 0.995, 0, 30))
+    )
     x_block = gradient_segments(20, 0.995, 30, 49.8)
     x_left = np.concatenate((x_left_block, x_block))
     # x_fracture = np.array([49.75, 49.90, 50.0, 50.10, 50.25])
@@ -49,12 +50,13 @@ def equidim_model(
     )
     x = np.concatenate((x_left, x_fracture))
     x = np.concatenate((x, x_right))
-    y = np.linspace(0, 100, np.int(100/1.25 + 1))  # (100/2.5 + 1) will also do the job
+    y = np.linspace(
+        0, 100, np.int(100 / 1.25 + 1)
+    )  # (100/2.5 + 1) will also do the job
     gb = pp.meshing.tensor_grid([], x=x, y=y, z=None)
     g = gb.grids_of_dimension(2)[0]
     # Uncomment to plot grid
     # pp.plot_grid(g, plot_2d=True)
-
 
     #%% Time-stepping control
     schedule = list(np.linspace(0, 500, 20, dtype=np.int32))
@@ -172,7 +174,6 @@ def equidim_model(
             "time_step": tsc.dt,  # [s]
         }
         pp.initialize_data(g, d, param_key, specified_parameters)
-
 
     # %% Set initial states
     for g, d in gb:

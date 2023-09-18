@@ -1,5 +1,5 @@
-from mdunsat.soil_catalog import soil_catalog
 from equidimensional_model import equidim_model
+from mdunsat.soil_catalog import soil_catalog
 
 #%% PARAMETERS
 MATRIX_SOIL = "new_mexico"
@@ -25,7 +25,7 @@ block_parameters = {
 # https://agupubs.onlinelibrary.wiley.com/doi/pdf/10.1029/2001WR001242
 
 fracture_parameters = {
-    "K_sat": 1E5,  # [cm/s]
+    "K_sat": 1e5,  # [cm/s]
     "theta_sat": 0.4,  # [-]
     "theta_res": 0,  # [-]
     "alpha_vg": 0.2,  # [1/cm]
@@ -47,5 +47,5 @@ for i in range(simulations):
         matrix_params=matrix_parameters,
         block_params=block_parameters,
         fracture_params=fracture_parameters,
-        out_fname="alpha_" + str(fracture_parameters["alpha_vg"])
+        out_fname="alpha_" + str(fracture_parameters["alpha_vg"]),
     )

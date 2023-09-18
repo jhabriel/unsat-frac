@@ -6,9 +6,13 @@ import numpy as np
 import porepy as pp
 import scipy.sparse.linalg as spla
 from grid_factory import GridGenerator
-from mdunsat.ad_utils import (bulk_cc_var_to_mortar_grid,
-                              get_conductive_mortars, get_ghost_hydraulic_head,
-                              set_iterate_as_state, set_state_as_iterate)
+from mdunsat.ad_utils import (
+    bulk_cc_var_to_mortar_grid,
+    get_conductive_mortars,
+    get_ghost_hydraulic_head,
+    set_iterate_as_state,
+    set_state_as_iterate,
+)
 from mdunsat.soil_catalog import soil_catalog
 
 # %% Retrieve grid buckets
