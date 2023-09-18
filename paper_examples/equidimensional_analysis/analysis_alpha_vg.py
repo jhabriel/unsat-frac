@@ -33,7 +33,7 @@ fracture_parameters = {
 }
 
 #%% Simulation loop
-simulations = 1  # 3 simulations in total
+simulations = 3  # 3 simulations in total
 for i in range(simulations):
 
     # Vary the alpha vanGenuchten parameter in each simulation
